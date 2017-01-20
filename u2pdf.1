@@ -1,0 +1,148 @@
+.\" Copyright (c) 2017 by Bruce J Frost <Bruce@BJFrost.net>
+.\"
+.\" Permission is granted to make and distribute verbatim copies of this
+.\" manual provided the copyright notice and this permission notice are
+.\" preserved on all copies.
+.\"
+.\" Permission is granted to copy and distribute modified versions of this
+.\" manual under the conditions for verbatim copying, provided that the
+.\" entire resulting derived work is distributed under the terms of a
+.\" permission notice identical to this one.
+.\"
+.\" Formatted or processed versions of this manual, if unaccompanied by
+.\" the source, must acknowledge the copyright and authors of this work.
+.\" License.
+.\"
+.\" Format on Linux with the command:
+.\"
+.\"    groff -Tpdf -man u2pdf.1 > u2pdf.1.pdf
+.\"
+.TH U2PDF 1 2017-01-19
+.SH NAME
+u2pdf \- produce file listing as PDF file
+.SH SYNOPSIS
+.nf
+.BI "u2pdf [OPTION]... FILE"
+
+.SH DESCRIPTION
+
+.PP
+The
+.BR u2pdf
+command reads the input
+.I FILE
+and produces a PDF file that can be viewed and printed.
+This is especially useful for files containing Unicode
+glyphs as there are tools to produce listings of ASCII
+files but very few that produce listings of Unicode
+files.
+
+This command is loosely patterned after the
+.B a2ps
+command with many fewer but useful options.
+The available options are:
+
+.TP
+.BI "-o PDFFILE"
+provides the file name for the generated PDF file.
+If this option is not provided, then the resulting
+PDF file is named after the input file with the
+file suffix removed and
+\fC".pdf"\fP suffix appended.
+
+.TP
+.B "-overwrite"
+indicates that it is not an error if the output file
+already exists.
+Without this option, if the file exists, an error is
+reported.
+
+.TP
+.BI "-paper NAME"
+indicates the name of the paper size.
+Supported paper sizes include \fC"letter"\fP,
+\fC"legal"\fP and \fC"a4"\fP.
+
+
+.TP
+.B  "-portrait"
+requests that the resulting document is oriented with the
+narrow size across.
+
+.TP
+.B  "-landscape"
+requests that the resulting document is oriented with the
+narrow size down.
+
+.TP
+.B  "-2up"
+requests that the resulting document is oriented with the
+narrow size down with 2 pages appearing on each physical page.
+
+.TP
+.B "-number"
+requests that the resulting document have each line of the
+input file numbered.
+
+.TP
+.B "-borders"
+requests that the listing have borders around the listing (the default).
+
+.TP
+.B "-noborders"
+requests that the listing not include any borders.
+
+
+.TP
+.B "-headings"
+requests that each page of the listing begin with a line indicating
+the date and time the PDF file was produced,
+the name of the input file,
+the page number.
+The heading is shaded to distinguish it from the file contents.
+
+.TP
+.B "-noheadings"
+requests that the listing have no headings.
+
+
+.TP
+.BI "-font NAME"
+requests the font to be used to produce the listing.
+The font should be monospaced and contain all of the
+glyphs that will be printed.
+The default is APLUA (ideal for APL program listings).
+
+.TP
+.BI "-fs SIZE"
+requests the font to be displayed in the indicated size
+in points.  The default is 10.
+
+.TP
+.B  "-lineskip SKIP"
+requests each output line be separated by an additional
+amount of white space.
+
+.TP
+.B  "-verbose"
+requests debugging information to be displayed.
+
+.SH NOTES
+
+None (yet).
+
+.SH SEE ALSO
+
+.B a2ps(1), acroread(1).
+
+.SH AUTHOR
+Written by Bruce J. Frost
+.SH "REPORTING BUGS"
+Report bugs to bugs at bjfrost.net.
+.SH COPYRIGHT
+Copyright \(co 2017 Bruce J. Frost.
+License LGPLv2 or later.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+ 
