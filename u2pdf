@@ -26,13 +26,14 @@ description:
 
     Option       |  Description
     -------------|-----------------------------------------------
-    -o           |  Output file
+    -o OUTFILE   |  Output file
     -overwrite   |  Continue if output file exists
     -paper NAME  |  Page type: 'letter', 'legal', 'a4', ...
     -portrait    |  Portrait pages
     -landscape   |  Landscape pages
     -2up         |  Print 2 pages per physical page in landscape
     -number      |  Number lines of input file
+    -tabs STOPS  |  The locations of tab stops
     -borders     |  Draw borders around page (default)
     -noborders   |  Do not draw borders around pages
     -headings    |  Print page headings (default)
@@ -41,6 +42,27 @@ description:
     -fs FSZ      |  Integer font size in points
     -lineskip    |  Additional space between lines in points
     -verbose     |  Print debugging information on stdout
+
+  Printing
+
+    Printing each page involves the use of the following global
+    variables:
+
+       Variable   |  Description
+       -----------|--------------------------------------------------
+       lineno     |  Current line number from file
+       linepos    |  Current vertical position in page
+       lineskip   |  Amount linepos is increased for each output line
+       pageno     |  The current page number
+       subpageno  |  The current sub-page number if printing n-up
+       subpage    |  The current sub-page on page
+       umargin    |  The location of the first line of output on a page
+       maxlinepos |  The first location beyond the last listing line
+
+    The newOutputLine function is responsible for printing a line of
+    output at the current linepos.  It calls the newOutputPage
+    function when the current page is full (which may call
+    newOutputLine if headings are being printed).
 
 """
 
@@ -73,11 +95,10 @@ description:
 
 """
 papersizes = {
-    #   Paper sizes in points
-    #   =====================
 
     # Name          Size
     # ==========  ===========
+
     'letter':     (612,  792),
     'legal':      (612, 1008),
     'executive':  (540,  720),
@@ -124,7 +145,7 @@ filename   = ''               # os.path.expanduser (options.filename)
 """
 \var	page
 
-\brief  size of target paper in points
+\brief  size of target paper in points: (width, height)
 """
 page       = (0, 0)            #  papersizes[options.paper]
 
@@ -190,6 +211,14 @@ subpage    = 0
 \brief	the total number of subpages that have been printed.
 """
 subpageno  = 0
+
+
+"""
+\var	pageready
+
+\brief	page borders and headings are present.
+"""
+pageready  = False
 
 
 """
@@ -267,6 +296,14 @@ description:
   the page borders on the bottom right corner of the page.
 """
 pg2upskip  = 3       # used in setPageNumber for 2up page number skip
+
+
+"""
+\var	pg2upsep
+
+\brief  the white space between sub-pages on a physical page.
+"""
+pg2upsep   = 14      # white space between subpages
 
 
 """
@@ -352,13 +389,34 @@ lineskip   = 0
 
 description:
 
-  This value is computed based upon:
+   Lines of output are generated until linepos becomes
+   greater than or equal to maxlinepos.  maxlinepos is
+   takes the following factors into account:
 
-  - the page size
+   - lineskip:  the amount by which every line increases the
+                vertical page location.
 
-  - printing mode: -portrait, -landscape, -2up
+   - page[1]:   the total imaging height of the page
 
-  - the font name and size
+   - umargin:   the space at the top and bottom of the page to
+                leave blank.
+
+   1. The first step is to compute the amount of vertical space
+      that could be used:
+
+              page[1] - (2 * umargin)
+
+   2. Then this space is divided by the lineskip value to obtain
+      the number of lines that fit in the vertical space.
+      Truncated to an integer this reflects the actual number of
+      lines per page that fit the vertical area.
+
+   3.  The actual number of lines per page is then multiplied by
+       lineskip to obtain the vertical distance that will be
+       printed.
+
+   4.  Adding umargin takes into account the upper margin that is
+       not printed.
 
 """
 maxlinepos = 0
@@ -438,6 +496,7 @@ def printoptions (options):
     print "Landscape: %d"   % options.landscape
     print "2up:       %d"   % options.twoup
     print "Number:    %d"   % options.number
+    print "Tabs       %d"   % options.tabs
     print "Borders:   %d"   % options.borders
     print "Headings:  %d"   % options.headings
     print "Font:      '%s'" % options.font
@@ -457,6 +516,7 @@ def getFontStyleName (style):
     str = style.__str__ ()
     match = re.search (r'PANGO_STYLE_([A-Za-z0-9_]+)', str)
     return "<unknown>" if 0==match else match.group (1)
+
 
 """
 \fn	getFontVariantName (variant)
@@ -486,12 +546,12 @@ def getFontWeightName (weight):
 \brief	Displays debugging information about the font.
 """
 def printFont (font):
-    print "Scale:      " + '%d' % pango.SCALE
-    print "Family:     " + font.get_family ()
-    print "Style:      " + '%s' % getFontStyleName (font.get_style ())
-    print "Variant:    " + '%s' % getFontVariantName (font.get_variant ())
-    print "Weight:     " + '%s' % getFontWeightName (font.get_weight ())
-    print "Size:       " + '%d' % font.get_size ()
+    print "Scale:      %d" % pango.SCALE
+    print "Family:     %s" % font.get_family    ()
+    print "Style:      %s" % getFontStyleName   (font.get_style ())
+    print "Variant:    %s" % getFontVariantName (font.get_variant ())
+    print "Weight:     %s" % getFontWeightName  (font.get_weight ())
+    print "Size:       %d" % font.get_size      ()
 
 
 """
@@ -619,6 +679,33 @@ def setPageNumber (layout, context, pccontext):
 
 
 """
+\fn 	startPage (layout, context, pccontext)
+
+\brief	insure that the current page has borders and headings.
+
+description:
+
+  This function is called prior to printing the first
+  listing line on a page.  It insures that the page
+  contains borders and headings if they are enabled.
+
+"""
+def startPage (layout, context, pccontext):
+    global pageready
+    global linepos
+
+    pageready = True
+
+    if options.borders:
+        drawPageBorders (context)
+
+    linepos = umargin
+
+    if options.headings:
+        setPageHeadings (layout, context, pccontext)
+
+
+"""
 \fn	finishOutputPage (layout, context, pccontext)
 
 \brief	Finish current page
@@ -634,19 +721,22 @@ def finishOutputPage (layout, context, pccontext):
     global subpageno
     global pageno
 
+    if False == pageready:
+        return
+
     if options.twoup:
         if options.headings:
 
             if 0 == subpage:
                 # shift over to second page location at page bottom
-                context.translate (maxcolpos + 14,
+                context.translate (maxcolpos + pg2upsep,
                                    maxlinepos - linepos)
             else:
                 # stay on second page but guarantee page bottom
                 context.translate (0, maxlinepos - linepos)
 
             setPageNumber (layout, context, pccontext)
-            context.translate (-maxcolpos - 14, umargin - maxlinepos)
+            context.translate (-maxcolpos - pg2upsep, umargin - maxlinepos)
             subpage    = 0
     else:
         context.translate (0, umargin - linepos)
@@ -664,8 +754,7 @@ description:
 
   This may not really finish the page if n-up pages are
   being printed.  In this case, the actual page output
-  if the last page of output for the current page was
-  generated.
+  occurs after all subpages for the page are printed.
 
   In any case, the only interesting part is the handling
   of the current context translation which moves across
@@ -681,6 +770,7 @@ def newOutputPage (layout, context, pccontext):
     global subpage
     global subpageno
     global linepos
+    global pageready
 
     if options.twoup:
         #  ***********************************************
@@ -691,7 +781,7 @@ def newOutputPage (layout, context, pccontext):
             finishOutputPage (layout, context, pccontext)
             subpage = 0
         else:
-            context.translate (maxcolpos + 14, umargin - linepos)
+            context.translate (maxcolpos + pg2upsep, umargin - linepos)
             subpage = 1
     else:
         #  ***********************************************
@@ -699,17 +789,7 @@ def newOutputPage (layout, context, pccontext):
         #  ***********************************************
         finishOutputPage (layout, context, pccontext)
 
-    # ****************************************************
-    # *                 Borders and Headings
-    # ****************************************************
-
-    if options.borders:
-        drawPageBorders (context)
-
-    linepos = umargin
-
-    if options.headings:
-        setPageHeadings (layout, context, pccontext)
+    pageready = False
 
 
 """
@@ -719,7 +799,7 @@ def newOutputPage (layout, context, pccontext):
 
 description:
 
-  The pangocairo_context updates the layout and then shows
+  The pccontext updates the layout and then shows
   the layout which ships the line to cairo where it appears
   on the page.  The translation is updated for the next
   output line position and that location is checked against
@@ -733,6 +813,10 @@ description:
 def newOutputLine (layout, context, pccontext, line):
     global linepos
     global MyName
+    global pageready
+
+    if False == pageready:
+        startPage (layout, context, pccontext)
 
     layout.set_text (line)
     context.set_source_rgb (0, 0, 0)         # Black
@@ -812,6 +896,20 @@ def getMaxCPL (layout):
     return int ((maxcolpos - cw + 1) / cw)
 
 
+"""
+\fn	initialPageSetting ()
+
+\brief	Validates command line switches for paper selection
+
+description:
+
+  Insures that the '-paper' option contains the name of a valid
+  paper size.
+
+  Ensures that only one of '-portrait', '-landscape' or '-2up' was
+  specified.
+
+"""
 def initialPageSetting ():
 
     #  *************************************************
@@ -859,6 +957,8 @@ def displayLayout ():
     print ""
     print "Layout Size"
     print "==================="
+    print "totalpages  %d" % totalpages
+    print "totsubpages %d" % totalsubpages
     print "page:       %s" % page.__str__ ()
     print "font sz:    %d" % fontsize
     print "sz:         %s" % layout.get_size ().__str__ ()
@@ -869,6 +969,7 @@ def displayLayout ():
     print "maxlinepos: %d" % maxlinepos
     print "maxcolpos:  %d" % maxcolpos
     print "maxcpl:     %d" % maxcpl
+    print "maxlpp:     %d" % maxlpp
     print "==================="
     print ""
 
@@ -897,7 +998,7 @@ def createHeading (maxcpl, datentime, basename):
     avail   = maxcpl - len (datentime) - 2 - 12
 
     if avail < 8:
-        fatalerror (options, "Font size too large")
+        fatalerror (parser, "Font size too large")
 
     if len (basename) > avail:
         basename = basename[0:avail]
@@ -909,7 +1010,28 @@ def createHeading (maxcpl, datentime, basename):
         print "%s: datentime = '%s'" % (MyName, datentime)
 
     return heading
-    
+
+
+"""
+\fn	expandTabs (text, tabs)
+
+\brief	expands tabs in text string to appropriate spaces
+
+"""
+def expandTabs (text, tabs = 7):
+
+    rs = u""
+
+    for c in text:
+        if '\t' == c:
+            rs += u" "
+            while ((len (rs) % tabs) != 0):
+                rs += u" "
+        else:
+            rs += c
+
+    return rs
+
 
 """
 \fn	computeTotals (lskip, maxcpl, maxlinepos, file)
@@ -926,56 +1048,98 @@ description:
   When all lines have been processed, the totals are saved
   in the totalpages and toalsubpages variables.
 
-  While various global values are accessed, the only global
-  variables modified by this function are the resulting values.
+  While various global values are accessed, no global
+  variables are modified by this function.
 
 """
 def computeTotals (lskip, maxcpl, maxlinepos, file):
-    lineno    = 0
-    linepos   = umargin
-    subpage   = 0
-    pageno    = 0
-    subpageno = 0
-    wrapped   = 0
-    for line in file:
-        lineno += 1
-        #  ************************************************
-        #  *           generate line text
-        #  ************************************************
-        if options.number:
-            text = (('%4d: ' % lineno) + line).rstrip ()
-        else:
-            text = line.rstrip ()
 
-        #  ************************************************
-        #  *      check and deal with line wrapping
-        #  ************************************************
+    #  first some variables that are modified by sub-functions
+    class cl:
+        lineno       =  0         # input file line number
+        linepos      =  umargin   # page line location
+        subpage      =  0         # sub-page number within a page
+        pageno       =  0         # page number
+        subpageno    =  0         # sub-page number within listing
+        wrapped      =  0         # wrapped line count
+
+    """
+    \fn		computeNewPage ()
+
+    \brief	deals with the end of a page of ouptut
+
+    description:
+
+      Issues appear with generating n-up output which means
+      that the end of a page may only be the end of a
+      logical page.
+
+      Reset cl.linepos to reflect the next printed output
+      begins at the top of the printed area plus one line
+      if headings are being displayed.
+
+    """
+    def computeNewPage ():
+        if options.twoup:
+            #  *     Printing two pages per page
+            cl.subpageno += 1
+            if cl.subpage:
+                #  *  Finished second page
+                cl.pageno += 1
+                cl.subpage = 0
+            else:
+                #  *  Finished first page
+                cl.subpage = 1
+        else:
+            #         One page per physical page
+            cl.pageno += 1
+        #  *          Print at top of new page
+        cl.linepos = umargin
+        if options.headings:
+            #         Account for heading line
+            cl.linepos += lineskip
+
+    """
+    \fn 	computeNewLine ()
+
+    \brief	handle a new line being printed
+
+    description:
+
+      The only interesting thing here is that there must
+      be a check for the end of the page and do the
+      end of page processing if appropriate.
+    """
+    def computeNewLine ():
+        cl.linepos += lineskip
+        if cl.linepos >= maxlinepos:
+            #  *******************************************
+            #  *     Page is full - start a new page
+            #  *******************************************
+            computeNewPage ()
+
+    #  ***************************************************
+    #  *   Start Here:  Examine every line of file
+    #  ***************************************************
+
+    for line in file:
+        cl.lineno += 1
+        line       = expandTabs (line).rstrip ()
+        #  *           generate line text to print
+        if options.number:
+            text = ('%4d: ' % cl.lineno) + line
+        else:
+            text = line
+
+        #  *      check for and deal with line wrapping
         llen  =  len (text)
         if llen > maxcpl:
-            wrapped += 1
+            cl.wrapped += 1
             while len (text) > maxcpl:
                 cnt  = maxcpl - 1
-                this = text[0:cnt]   # before wrap
-                that = text[cnt:]    # after wrap
-                lineno  += 1         # incr line count
-                linepos += lineskip  # incr line position
-                if linepos >= maxlinepos:
-                    # *************************************
-                    # *  page is full - start a new page
-                    # *************************************
-                    if options.twoup:
-                        subpageno += 1
-                        if subpage:
-                            pageno += 1
-                            subpage = 0
-                        else:
-                            subpage = 1
-                    else:
-                        pageno += 1
-                    linepos = umargin
-                    if options.headings:
-                        # account for heading line
-                        linepos += lineskip
+                this = text[0:cnt]      # before wrap
+                that = text[cnt:]       # after wrap
+                computeNewLine ()
                 # ****************************************
                 # *   produce continuation line text
                 # ****************************************
@@ -986,37 +1150,20 @@ def computeTotals (lskip, maxcpl, maxlinepos, file):
         #  ***********************************************
         #  *   line didn't wrap or last wrapped segment
         #  ***********************************************
-        linepos += lineskip
-        if linepos >= maxlinepos:
-            #  *******************************************
-            #  *    page is full - start a new page
-            #  *******************************************
-            if options.twoup:
-                subpageno += 1
-                if subpage:
-                    pageno += 1
-                    subpage = 0
-                else:
-                    subpage = 1
-            else:
-                pageno += 1
-            linepos = umargin
-            if options.headings:
-                # account for heading line
-                linepos += lineskip
+        computeNewLine ()
 
     #  ***************************************************
     #  *
-    #  *  Finished processing all lines: record totals
+    #  *  Finished processing all lines: return totals
     #  *
     #  ***************************************************
-    global totalpages
-    global totalsubpages
-    totalpages    = pageno    + 1
-    totalsubpages = subpageno + 1
+
     if options.verbose:
-        print ("%s:  lines=%d, linepos=%d, pages=%d, subpages=%d" %
-               (MyName, lineno, linepos, pageno, subpageno))
+        print ("%s: computeTotals lines=%d, linepos=%d, pages=%d, subpages=%d" %
+               (MyName, cl.lineno, cl.linepos, 1 + cl.pageno, 1 + cl.subpageno))
+
+    return (cl.pageno + 1, cl.subpageno + 1)
+
 
 #   **************************************************
 #   *
@@ -1059,6 +1206,10 @@ parser.add_argument ('-2up',
                      dest    = 'twoup',
                      action  = 'count',
                      default = 0)
+
+parser.add_argument ('-tabs',
+                     help    = 'Provide tab stop settings for input file',
+                     default = 8)
 
 parser.add_argument ('-number',
 		     help    = 'Number output lines.',
@@ -1135,26 +1286,29 @@ page = papersizes[options.paper]
 
 #   **************************************************
 #   *
-#   *  initialize font name and font size
+#   *  Initialize font name
+#   *
+#   *  Default font size to 5 point if -2up, otherwise 8 points
 #   *
 #   *  Switch to landscape mode if -2up or -landscape
-#   *
-#   *  Default font to 5 point if -2up, otherwise 8 points
 #   *
 #   **************************************************
 
 fontname = options.font
-fontsize = 10 if 0 == options.fs else options.fs
+
+if 0 != options.fs:
+    fontsize   = options.fs
+else:
+    if options.twoup and 0 == options.fs:
+        fontsize = 5
+    else:
+        fontsize = 8
+
 
 if options.landscape or options.twoup:
     page = ( page[1], page[0] )
     if options.verbose:
         print "%s:  generating landscape output" % MyName
-
-if options.twoup and 0 == options.fs:
-    options.fs = 5
-else:
-    options.fs = 8
 
 
 #   **************************************************
@@ -1175,12 +1329,14 @@ filename = os.path.expanduser (options.filename)
 basename = os.path.basename   (options.filename)
 fullname = os.path.abspath    (options.filename)
 
+
 if options.verbose > 0:
     print "File Name"
     print "=============================="
     print "Output file = '%s'" % options.o
     print "Base Name   = '%s'" % basename
     print "Full Name   = '%s'" % fullname
+
 
 if 0 == os.path.exists (filename):
     fatalerror (parser, "File '%s' does not exist" % options.filename)
@@ -1209,7 +1365,7 @@ except IOError as ei:
 
 surface    = cairo.PDFSurface (options.o, page[0], page[1])
 context    = cairo.Context (surface)
-font       = pango.FontDescription(fontname + ' %d' % options.fs)
+font       = pango.FontDescription(fontname + ' %d' % fontsize)
 
 if options.verbose > 2:
     print "Font Family = '%s'" % font.get_family ()
@@ -1235,8 +1391,8 @@ context.fill ()
 #   *
 #   ***************************************************
 
-pangocairo_context = pangocairo.CairoContext(context)
-pangocairo_context.set_antialias(cairo.ANTIALIAS_SUBPIXEL)
+pccontext = pangocairo.CairoContext(context)
+pccontext.set_antialias(cairo.ANTIALIAS_SUBPIXEL)
 
 #   **************************************************
 #   *
@@ -1261,52 +1417,28 @@ if options.twoup:
     #  |  (lmargin, maxlinepos)| |(lmargin + maxcolpos + 14, maxlinepos) |
     #  +-----------------------+ +---------------------------------------+
     #
-    maxcolpos = (page[0] - (lmargin * 2) - 14) / 2
+    maxcolpos = (page[0] - (lmargin * 2) - pg2upsep) / 2
 else:
     maxcolpos =  page[0] - (lmargin * 2)
 
-layout      = pangocairo_context.create_layout()
+# ***********************************************************************
+# *
+# *   create pango-cairo context and initialize font
+# *
+# ***********************************************************************
+
+layout      = pccontext.create_layout()
 layout.set_font_description(font)
+
+# ***********************************************************************
+# *
+# *   finalize page layout
+# *
+# ***********************************************************************
+
 lineskip    = 0
 maxcpl      = getMaxCPL (layout)
 lineskip   += options.lineskip
-
-
-#! \var      maxlinepos
-#!
-#! \brief    the linepos at which to finish this page
-#!
-#! description:
-#!
-#!   Lines of output are generated until the linepos becomes
-#!   greater than or equal to maxlinepos.  This value is computed
-#!   here to take the following factors into account:
-#!
-#!   - lineskip:  the amount by which every line increases the
-#!                vertical page location.
-#!
-#!   - page[1]:   the total imaging height of the page
-#!
-#!   - umargin:   the space at the top and bottom of the page to
-#!                leave blank.
-#!
-#!   1. The first step is to compute the amount of vertical space
-#!      that could be used:
-#!
-#!              page[1] - (2 * umargin)
-#!
-#!   2. Then this space is divided by the lineskip value to obtain
-#!      the number of lines that fit in the vertical space.
-#!      Truncated to an integer this reflects the actual number of
-#!      lines per page that fit the vertical area.
-#!
-#!   3.  The actual number of lines per page is then multiplied by
-#!       lineskip to obtain the vertical distance that will be
-#!       printed.
-#!
-#!   4.  Adding umargin takes into account the upper margin that is
-#!       not printed.
-#!   
 
 maxlinepos  = umargin + int ((page[1] - (2 * umargin)) / lineskip) * lineskip
 maxlinepos  = int (maxlinepos)
@@ -1316,17 +1448,14 @@ if maxlpp < 8:
     fatalerror (options, "Font size too large")
 
 
-#   **************************************************
-#   *
-#   *  Create heading line if generating headings
-#   *
-#   **************************************************
+# **************************************************
+# *
+# *  Create heading line if generating headings
+# *
+# **************************************************
 
 if options.headings:
     heading = createHeading (maxcpl, datentime, basename)
-
-if options.verbose > 0:
-    displayLayout ()
 
 
 # *******************************************************
@@ -1335,29 +1464,19 @@ if options.verbose > 0:
 # *
 # *******************************************************
 
-computeTotals (lineskip, maxcpl, maxlinepos, file)
+totalpages, totalsubpages = computeTotals (lineskip, maxcpl, maxlinepos, file)
+
+if options.verbose > 0:
+    displayLayout ()
 
 
-#   *********************************************************
-#   *
-#   *  Translate coordinates to lmargin in and umargin down
-#   *
-#   *********************************************************
+# *********************************************************
+# *
+# *  Translate coordinates to lmargin in and umargin down
+# *
+# *********************************************************
 
 context.translate (lmargin, umargin)
-
-
-# *******************************************************
-# *
-# *  Draw Borders and Print Page Headings for first page
-# *
-# *******************************************************
-
-if options.borders:
-    drawPageBorders (context)
-
-if options.headings:
-    setPageHeadings (layout, context, pangocairo_context)
 
 
 # **************************************************
@@ -1368,35 +1487,36 @@ if options.headings:
 
 for line in file:
     lineno  += 1
+    line     = expandTabs (line, options.tabs).rstrip ()
     if options.number:
-        text = (('%4d: ' % lineno) + line).rstrip ()
+        ltext = ('%4d: ' % lineno) + line
     else:
-        text = line.rstrip ()
+        ltext = line
 
-    llen   = len (text)
+    llen   = len (ltext)
 
     if llen > maxcpl:
         wrapped += 1
 
         if options.verbose > 0:
-            print "**** Wrapped line=%d, len=%d, maxcpl=%d"%(lineno,llen,maxcpl) 
+            print "**** Wrapped line=%d, len=%d, maxcpl=%d"%(lineno,llen,maxcpl)
 	    if options.verbose > 1:
 	        print text[0:maxcpl]
 
-        while len (text) > maxcpl:
+        while len (ltext) > maxcpl:
        	    cnt  = maxcpl - 1
-	    this = text[0:cnt]
-	    that = text[cnt:]
-	    newOutputLine (layout, context, pangocairo_context, this + "\\")
+	    this = ltext[0:cnt]
+	    that = ltext[cnt:]
+	    newOutputLine (layout, context, pccontext, this + "\\")
 
 	    if options.number:
-	        text = "      " + that
+	        ltext = "      " + that
 	    else:
-	        text = that
+	        ltext = that
 
-    newOutputLine (layout, context, pangocairo_context, text)
+    newOutputLine (layout, context, pccontext, ltext)
 
-finishOutputPage (layout, context, pangocairo_context)
+finishOutputPage (layout, context, pccontext)
 
 
 # *******************************************************
