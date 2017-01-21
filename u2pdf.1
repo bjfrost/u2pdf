@@ -43,18 +43,26 @@ command with many fewer but useful options.
 The available options are:
 
 .TP
-.BI "-o PDFFILE"
-provides the file name for the generated PDF file.
+.B  "-pdf"
+produces a PDF file (the default).
+
+.TP
+.B  "-ps"
+produces a postscript file.
+
+.TP
+.BI "-o OUTFILE"
+provides the file name for the generated PDF or PS file.
 If this option is not provided, then the resulting
-PDF file is named after the input file with the
-file suffix removed and
-\fC".pdf"\fP suffix appended.
+PDF or PS file is named after the input file with the
+file suffix removed and either the
+\fC".pdf"\fP or \fC".ps"\fP suffix appended.
 
 .TP
 .B "-overwrite"
 indicates that it is not an error if the output file
 already exists.
-Without this option, if the file exists, an error is
+Without this option, if the output file exists, an error is
 reported.
 
 .TP
@@ -62,7 +70,7 @@ reported.
 indicates the name of the paper size.
 Supported paper sizes include \fC"letter"\fP,
 \fC"legal"\fP and \fC"a4"\fP.
-
+The default paper name is \fC"letter"\fP.
 
 .TP
 .B  "-portrait"
@@ -127,6 +135,12 @@ in points.  The default is 10.
 .B  "-lineskip SKIP"
 requests each output line be separated by an additional
 amount of white space.
+
+.TP
+.B "-test"
+requests that the output file not be generated.
+This is used to test the other command line options
+for errors.
 
 .TP
 .B  "-verbose"

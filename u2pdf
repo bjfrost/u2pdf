@@ -27,6 +27,8 @@ description:
     Option       |  Description
     -------------|-----------------------------------------------
     -o OUTFILE   |  Output file
+    -pdf         |  Produce PDF file
+    -ps          |  Produce PS file
     -overwrite   |  Continue if output file exists
     -paper NAME  |  Page type: 'letter', 'legal', 'a4', ...
     -portrait    |  Portrait pages
@@ -41,6 +43,7 @@ description:
     -font NAME   |  Name of font to use
     -fs FSZ      |  Integer font size in points
     -lineskip    |  Additional space between lines in points
+    -test        |  Testing command line for errors
     -verbose     |  Print debugging information on stdout
 
   Printing
@@ -490,6 +493,7 @@ def printoptions (options):
     print "=================================="
     print "Input:     '%s'" % options.filename
     print "Output:    '%s'" % options.o
+    print "otype      '%s'" % options.otype
     print "Overwrite: %d"   % options.overwrite
     print "Page Size: '%s'" % options.paper
     print "Portrait:  %d"   % options.portrait
@@ -502,6 +506,7 @@ def printoptions (options):
     print "Font:      '%s'" % options.font
     print "Font size: %d"   % options.fs
     print "Line Skip: %d"   % options.lineskip
+    print "Test:      %d"   % options.test
     print "Verbose:   %d"   % options.verbose
     print "=================================="
     print ""
@@ -573,7 +578,10 @@ description:
 def setOutputFile (parser, options):
     if len (options.o) == 0:
        sname = os.path.splitext (os.path.expanduser (options.filename))
-       options.o = sname[0] + '.pdf'
+       if options.otype == 'pdf':
+           options.o = os.path.basename (sname[0]) + '.pdf'
+       else:
+           options.o = os.path.basename (sname[0]) + '.ps'
     else:
        options.o = os.path.expanduser (options.o)
 
@@ -1182,6 +1190,20 @@ parser.add_argument ('-o',
 		     help    = 'Set output PDF file path',
 		     default = '')
 
+parser.add_argument ('-pdf',
+                     dest    = 'otype',
+                     action  = 'store_const',
+                     const   = 'pdf',
+                     help    = 'Produce PDF file')
+
+parser.add_argument ('-ps',
+                     dest    = 'otype',
+                     action  = 'store_const',
+                     const   = 'ps',
+                     help    = 'Produce postscript file')
+
+parser.set_defaults (otype   = 'pdf')
+
 parser.add_argument ('-overwrite',
 		     help    = 'Allow PDF file to be overwritten.',
 		     default = 0,
@@ -1256,6 +1278,11 @@ parser.add_argument ('-verbose', '-v',
 		     help    = 'Display additional information',
 		     default = 0,
 		     action  = 'count')
+
+parser.add_argument ('-test',
+                     action  = 'store_const',
+                     const   = True,
+                     help    = 'Examine arguments and detect errors')
 
 parser.add_argument ('filename',
 		     help    = 'File to be printed.')
@@ -1356,16 +1383,46 @@ except IOError as ei:
     fatalerror (parser, "Read failed: %s" % ei)
 
 
+if options.test:
+    if 0 == options.verbose:
+        printoptions (options)
+        print "File Name"
+        print "=============================="
+        print "Output file = '%s'" % options.o
+        print "Base Name   = '%s'" % basename
+        print "Full Name   = '%s'" % fullname
+    exit (0)
+
 #   **************************************************
 #   *
-#   *     Initialize cairo output PDF
+#   *     Initialize cairo output PDF / PS
 #   *
 #   **************************************************
 
 
-surface    = cairo.PDFSurface (options.o, page[0], page[1])
-context    = cairo.Context (surface)
-font       = pango.FontDescription(fontname + ' %d' % fontsize)
+if options.otype == 'pdf':
+    surface = cairo.PDFSurface (options.o, page[0], page[1])
+else:
+    # Postscript surface - use actual page dimensions
+    if options.landscape or options.twoup:
+        surface = cairo.PSSurface (options.o, page[1], page[0])
+    else:
+        surface = cairo.PSSurface (options.o, page[0], page[1])
+
+    if options.landscape or options.twoup:
+       surface.dsc_begin_page_setup ()
+       surface.dsc_comment ("%%PageOrientation: Landscape")
+
+context     = cairo.Context (surface)
+
+if options.otype == 'ps':
+    if options.landscape or options.twoup:
+        #  need to rotate page around the center of page
+        context.translate (page[1]/2, page[0]/2)
+        context.rotate    (-3.141592653589793/2)
+        context.translate (-page[0]/2, -page[1]/2)
+
+font        = pango.FontDescription(fontname + ' %d' % fontsize)
 
 if options.verbose > 2:
     print "Font Family = '%s'" % font.get_family ()
