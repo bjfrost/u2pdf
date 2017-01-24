@@ -10,69 +10,66 @@ import os
 import time
 import re
 
+"""
+    u2pdf  -  produce PDF or PS listing of a source file.
+
+    Copyright 2017, Bruce J. Frost
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
 
 """
 \file		u2pdf
 
-\brief		produce listing of a file as a PDF file.
+\brief		produce listing of a file as a PDF (or PS) file.
 
 description:
 
-  Uses python with cairo and pango to produce the PDF
-  file.  It assumes that the font provided is a monospace
+  Uses python with cairo and pango to produce the PDF or PS
+  file.  It assumes that the font requested is a monospace
   font otherwise, it may produce strange results.
 
   Options:
 
-    Option       |  Description
-    -------------|-----------------------------------------------
-    -o OUTFILE   |  Output file
-    -pdf         |  Produce PDF file
-    -ps          |  Produce PS file
-    -overwrite   |  Continue if output file exists
-    -paper NAME  |  Page type: 'letter', 'legal', 'a4', ...
-    -portrait    |  Portrait pages
-    -landscape   |  Landscape pages
-    -2up         |  Print 2 pages per physical page in landscape
-    -number      |  Number lines of input file
-    -tabs STOPS  |  The locations of tab stops
-    -borders     |  Draw borders around page (default)
-    -noborders   |  Do not draw borders around pages
-    -headings    |  Print page headings (default)
-    -noheadings  |  Do not print page headings
-    -font NAME   |  Name of font to use
-    -fs FSZ      |  Integer font size in points
-    -lineskip    |  Additional space between lines in points
-    -test        |  Testing command line for errors
-    -verbose     |  Print debugging information on stdout
-
-  Printing
-
-    Printing each page involves the use of the following global
-    variables:
-
-       Variable   |  Description
-       -----------|--------------------------------------------------
-       lineno     |  Current line number from file
-       linepos    |  Current vertical position in page
-       lineskip   |  Amount linepos is increased for each output line
-       pageno     |  The current page number
-       subpageno  |  The current sub-page number if printing n-up
-       subpage    |  The current sub-page on page
-       umargin    |  The location of the first line of output on a page
-       maxlinepos |  The first location beyond the last listing line
-
-    The newOutputLine function is responsible for printing a line of
-    output at the current linepos.  It calls the newOutputPage
-    function when the current page is full (which may call
-    newOutputLine if headings are being printed).
+      O |  Option          |  Description
+     ---|------------------|------------------------------------------
+     -o | --output OUTFILE |  path to listing file (defaults appropriately)
+     -w | --overwrite      |  continue if listing file exists
+     -S | --pdf            |  listing is a PDF file
+     -s | --ps             |  listing is a postscript file
+     -f | --font FONTNAME  |  font name used to create listing
+     -F | --fs   SIZE      |  size of font in points
+     -P | --paper SIZE     |  name of paper size (default = 'letter')
+     -p | --portrait       |  print page in portrait mode
+     -l | --landscape      |  print page in landscape mode
+     -2 | --2up            |  print 2 pages per physical page
+     -t | --tabs N         |  input lines have tabs evenly spaced at N
+     -H | --headings       |  include page headings
+     -N | --noheadings     |  no page headings
+     -B | --borders        |  draw border around the page
+     -b | --noborders      |  no page borders
+     -n | --number         |  number input lines
+     -T | --test           |  test command line for errors
+     -v | --verbose        |  print debugging information
+     -q | --quiet          |  turn off verbose and do not print a summary
+     -h | --help           |  display help information
 
 """
 
 #   **************************************************
-#   *
 #   *              Global Variables
-#   *
 #   **************************************************
 
 """
@@ -83,372 +80,11 @@ description:
 MyName   =  os.path.basename (__file__)
 
 
-"""
-\var 	papersizes
-
-\brief	Provides the size in points of various named paper.
-
-description:
-
-  This dictionary is used to determine if the '-paper'
-  command line switch has provided a name for which
-  this program has size information.  The size is
-  provided in portrait mode and will be swapped to
-  produce the landscape page size.
-
-"""
-papersizes = {
-
-    # Name          Size
-    # ==========  ===========
-
-    'letter':     (612,  792),
-    'legal':      (612, 1008),
-    'executive':  (540,  720),
-    'folio':      (612,  936),
-    'a4':         (595,  842),
-    'a5':         (420,  595),
-    'a6':         (298,  420),
-    'b5':         (516,  729),
-    'b6':         (354,  499)
-}
-
-
-"""
-\var	outfile
-
-\brief	Name of the output PDF file.
-
-description:
-
-  This name comes from the '-o' command line switch
-  or it is computed from the input file name.  The
-  actual value is filled in later after processing
-  the command line.
-
-"""
-outfile    = ''
-
-
-"""
-\var	filename
-
-\brief	Name of the input file whose contents are displayed in PDF file.
-
-description:
-
-  This name comes from the command line where it is
-  the FILENAME in the usage.  The actual value is
-  filled in later after processing the command line.
-
-"""
-filename   = ''               # os.path.expanduser (options.filename)
-
-
-"""
-\var	page
-
-\brief  size of target paper in points: (width, height)
-"""
-page       = (0, 0)            #  papersizes[options.paper]
-
-
-"""
-\var	wrapped
-
-\brief	count of number of lines that have wrapped
-"""
-wrapped    = 0
-
-
-"""
-\var	lineno
-
-\brief	the line number of the input file being processed.
-"""
-lineno     = 0
-
-
-"""
-\var	pageno
-
-\brief	the current physical page number
-"""
-pageno     = 1
-
-
-"""
-\var	totalpages
-
-\brief	the total number of pages that will be printed
-"""
-totalpages    = 0
-
-
-"""
-\var	totalsubpages
-
-\brief	the total number subpages that will be printed
-"""
-totalsubpages = 0
-
-
-"""
-\var	subpage
-
-\brief	the subpage within the current physical page
-
-description:
-
-  This value indicates the subpage number on the
-  current page.  When the page is finished, this
-  value goes back to 0.
-
-"""
-subpage    = 0
-
-
-"""
-\var	subpageno
-
-\brief	the total number of subpages that have been printed.
-"""
-subpageno  = 0
-
-
-"""
-\var	pageready
-
-\brief	page borders and headings are present.
-"""
-pageready  = False
-
-
-"""
-\var	umargin
-
-\brief	The upper margin for the page.
-
-description:
-
-  The entire page is not normally printable and this value
-  is used to indicate the physical border on top of the
-  page that will not be printed.
-
-  This value is also used for the bottom border.
-"""
-umargin    = 30
-
-
-"""
-\var	linepos
-
-\brief	the current vertical page location in points
-"""
-linepos    = umargin
-
-
-"""
-\var	lmargin
-
-\brief  The left margin of the page.
-
-description:
-
-  The entire page is not printable, this value indicates
-  the physical left border on the page that will not be
-  printed.
-
-  This value is also used for the left border.
-"""
-lmargin    = 30
-
-
-"""
-\var	fontsize
-
-\brief	the size in points of the font.
-"""
-fontsize   = 0            # options.fs if options.fs > 0 else 10
-
-
-"""
-\var	fontname
-
-\brief	the name of the font used to display the filename.
-"""
-fontname   = ''           # options.font
-
-
-"""
-\var	datentime
-
-\brief	the date and time displayed in page headings.
-"""
-datentime  = time.strftime ("%b %d, %Y %H:%M")
-
-
-"""
-\var	pg2upskip
-
-\brief	the additional lineskip used to display physical page numbers
-
-description:
-
-  Used in '-2up' mode to display the physical page number below
-  the page borders on the bottom right corner of the page.
-"""
-pg2upskip  = 3       # used in setPageNumber for 2up page number skip
-
-
-"""
-\var	pg2upsep
-
-\brief  the white space between sub-pages on a physical page.
-"""
-pg2upsep   = 14      # white space between subpages
-
-
-"""
-\var	halpha
-
-\brief	alpha value for greyed out heading (0...1) (white...black)
-"""
-halpha     = 0.15    # alpha value for greyed out heading  0=white, 1=black
-
-
-"""
-\var	chwidth
-
-\brief	calculated character width
-
-description:
-
-  This is an average of the space required for 100 instances
-  of the canonical "wide" character.
-
-"""
-chwidth    = 1       # filled in by getMaxCPL
-
-
-"""
-\var	basename
-
-\brief	base name of the input file used in headings.
-
-description:
-
-  Filled in later based upon the command line.
-"""
-basename   = ''
-
-
-"""
-\var	fullname
-
-\brief	full path name of the input file.
-
-description:
-
-  Filled in later based upon the command line.
-"""
-fullname   = ''
-
-
-"""
-\var	heading
-
-\brief	page heading line.
-
-description:
-
-  Filled in later based upon the command line and target
-  paper size.  The heading contains the date and time,
-  base file name being displayed and the page number.
-
-"""
-heading    = ""
-
-
-"""
-\var	lineskip
-
-\brief	the increase in the Y-coordinate value for one output line.
-
-description:
-
-  This value depends upon the font and the size of the font.
-  The actual value is computed after that information is
-  known.
-
-"""
-lineskip   = 0
-
-
-"""
-\var	maxlinepos
-
-\brief  the first vertical location beyond the last printable line.
-
-description:
-
-   Lines of output are generated until linepos becomes
-   greater than or equal to maxlinepos.  maxlinepos is
-   takes the following factors into account:
-
-   - lineskip:  the amount by which every line increases the
-                vertical page location.
-
-   - page[1]:   the total imaging height of the page
-
-   - umargin:   the space at the top and bottom of the page to
-                leave blank.
-
-   1. The first step is to compute the amount of vertical space
-      that could be used:
-
-              page[1] - (2 * umargin)
-
-   2. Then this space is divided by the lineskip value to obtain
-      the number of lines that fit in the vertical space.
-      Truncated to an integer this reflects the actual number of
-      lines per page that fit the vertical area.
-
-   3.  The actual number of lines per page is then multiplied by
-       lineskip to obtain the vertical distance that will be
-       printed.
-
-   4.  Adding umargin takes into account the upper margin that is
-       not printed.
-
-"""
-maxlinepos = 0
-
-
-"""
-\var	maxcolpos
-
-\brief	the first horizontal location beyond the last printable character.
-
-description:
-
-  This value is computed based upon:
-
-  - the page size
-
-  - printing mode: -portrait, -landscape, -2up
-
-  - the font name and size
-
-"""
-maxcolpos  = 0
-
 
 #   **************************************************
-#   *
 #   *             Internal Functions
-#   *
 #   **************************************************
+
 
 """
 \fn    fatalerror (parser, message)
@@ -465,12 +101,26 @@ description:
 
 """
 def fatalerror (parser, message):
-    global  MyName
 
     print "%s: %s" % (MyName, message)
     print ""
     parser.print_usage ()
     exit (2)
+
+
+"""
+\fn 	strOutputMode (mode)
+
+\brief	translate output mode value into human readable string.
+"""
+def strOutputMode (mode):
+    if mode == listing.OUTPUTMODE_PORTRAIT:
+        return "PORTRAIT"
+    if mode == listing.OUTPUTMODE_LANDSCAPE:
+        return "LANDSCAPE"
+    if mode == listing.OUTPUTMODE_2UP:
+        return "2UP"
+    return "INVALID"
 
 
 """
@@ -480,13 +130,13 @@ def fatalerror (parser, message):
 
 description:
 
-  This function is called when -verbose is in effect
+  This function is called when --verbose is in effect
   to display the result of the command line processing.
 
 """
 def printoptions (options):
-    print ""
-    print options
+    if options.verbose > 1:
+        print options
 
     print ""
     print "Command Line Options:"
@@ -496,9 +146,7 @@ def printoptions (options):
     print "otype      '%s'" % options.otype
     print "Overwrite: %d"   % options.overwrite
     print "Page Size: '%s'" % options.paper
-    print "Portrait:  %d"   % options.portrait
-    print "Landscape: %d"   % options.landscape
-    print "2up:       %d"   % options.twoup
+    print "outmode:   %s"   % strOutputMode (options.outmode)
     print "Number:    %d"   % options.number
     print "Tabs       %d"   % options.tabs
     print "Borders:   %d"   % options.borders
@@ -508,59 +156,13 @@ def printoptions (options):
     print "Line Skip: %d"   % options.lineskip
     print "Test:      %d"   % options.test
     print "Verbose:   %d"   % options.verbose
+    print "Quiet:     %d"   % options.quiet
     print "=================================="
     print ""
 
 
 """
-\fn	getFontStyleName (style)
-
-\brief  Returns a string indicating the font style.
-"""
-def getFontStyleName (style):
-    str = style.__str__ ()
-    match = re.search (r'PANGO_STYLE_([A-Za-z0-9_]+)', str)
-    return "<unknown>" if 0==match else match.group (1)
-
-
-"""
-\fn	getFontVariantName (variant)
-
-\brief	Returns a string indicating the font variant.
-"""
-def getFontVariantName (variant):
-    str = variant.__str__ ()
-    match = re.search (r'PANGO_VARIANT_([A-Za-z0-9_]+)', str)
-    return "<unknown>" if 0==match else match.group (1)
-
-
-"""
-\fn	getFontWeightName (weight)
-
-\brief	Returns a string indicating the font weight.
-"""
-def getFontWeightName (weight):
-    str = weight.__str__ ()
-    match = re.search (r'PANGO_WEIGHT_([A-Za-z0-9_]+)', str)
-    return "<unknown>" if 0==match else match.group (1)
-
-
-"""
-\fn	printFont (font)
-
-\brief	Displays debugging information about the font.
-"""
-def printFont (font):
-    print "Scale:      %d" % pango.SCALE
-    print "Family:     %s" % font.get_family    ()
-    print "Style:      %s" % getFontStyleName   (font.get_style ())
-    print "Variant:    %s" % getFontVariantName (font.get_variant ())
-    print "Weight:     %s" % getFontWeightName  (font.get_weight ())
-    print "Size:       %d" % font.get_size      ()
-
-
-"""
-\fn	setOutputFile  (parser, options)
+\fn 	setOutputFile  (parser, options)
 
 \brief	Insures that options.o contains valid target PDF file
 
@@ -572,1017 +174,1813 @@ description:
     input source file name with '.pdf' suffix.
 
   - if target file already exists, verifies that the
-    '-overwrite' switch was provided.
+    '--overwrite' switch was provided.
 
 """
 def setOutputFile (parser, options):
+
+    rs = (listing.OUTPUTTYPE_PDF if options.otype == 'pdf' else
+          listing.OUTPUTTYPE_PS)
+
     if len (options.o) == 0:
-       sname = os.path.splitext (os.path.expanduser (options.filename))
-       if options.otype == 'pdf':
-           options.o = os.path.basename (sname[0]) + '.pdf'
-       else:
-           options.o = os.path.basename (sname[0]) + '.ps'
+        sname = os.path.splitext (os.path.expanduser (options.filename))
+        options.o = os.path.basename (sname[0]) + '.' + options.otype
     else:
-       options.o = os.path.expanduser (options.o)
+        options.o = os.path.expanduser (options.o)
 
     if os.path.exists (options.o):
-       if options.overwrite == 0:
-       	  fatalerror (parser, 'File "%s" exists (use -overwrite)' % options.o)
-
-    outfile = options.o
-
-
-"""
-\fn	drawPageBorders (context)
-
-\brief  uses cairo context to draw border around current page.
-
-description:
-
-  The border is drawn using maxcolpos and page[1] (height)
-  using the Cairo rectangle function using black ink and
-  a line width of 1.
-
-  If headings are being generated, then the first line of
-  output on the page is the heading which appears shaded
-  using the alpha channel.  The first line is selected
-  using the Cairo rectangle function using maxcolpos
-  for the width and lineskip + 4 for the height.
-
-"""
-def drawPageBorders (context):
-    context.set_line_width (1)
-    context.set_source_rgb (0, 0, 0)           # Black
-
-    context.rectangle (-4, -4,
-                       maxcolpos + 4,
-                       maxlinepos - umargin + 5)
-
-    context.stroke ()
-
-    if options.headings:
-        context.set_line_width (0.25)
-        context.set_source_rgba (0.25, 0.25, 0.25, halpha)
-        context.rectangle (-4, -4,
-                           maxcolpos + 4, lineskip + 4)
-        context.fill ()
+        if options.overwrite == 0:
+            fatalerror (parser,
+                        'File "%s" exists (use --overwrite)' % options.o)
+    return rs
 
 
 """
-\fn	setPageHeadings (layout, context, pccontext)
+\fn 	printFont (font)
 
-\brief  Draw the page heading.
-
-description:
-
-  The page heading is simply the first line of output on
-  each page.  Its appearance is shaded to distinguish the
-  heading from the file contents.
-
-  The basic heading line was generated during startup, the
-  only work here is to add the page number to each page
-  (or subpage).
-
-  Note that newOutputLine is used to print the line which
-  could be a problem if the page could only hold a single
-  line of output.
-
+\brief	Displays debugging information about the font.
 """
-def setPageHeadings (layout, context, pccontext):
-    global heading
-    if options.twoup:
-        strpageno = "Page %d/%d" % (subpageno + 1, totalsubpages)
-    else:
-        strpageno = "Page %d/%d" % (pageno, totalpages)
-    plen      = len (strpageno)
-    hlen      = len (heading)
-    heading   = heading[0:hlen - plen] + strpageno
-    newOutputLine (layout, context, pccontext, heading)
+def printFont (font):
+    print "Font Information"
+    print "====================="
+    print "Scale:      %d" % pango.SCALE
+    print "Family:     %s" % font.get_family    ()
+    print "Style:      %s" % getFontStyleName   (font.get_style ())
+    print "Variant:    %s" % getFontVariantName (font.get_variant ())
+    print "Weight:     %s" % getFontWeightName  (font.get_weight ())
+    print "Size:       %d" % font.get_size      ()
 
 
 """
-\fn	setPageNumber (layout, context, pccontext)
+\fn 	getFontStyleName (style)
 
-\brief  Adds the actual page number when generating 2up output.
-
-description:
-
-  This function is called when the last subpage of output
-  appears on the physical page.  This numbers the actual
-  page below the page borders.
-
+\brief	Returns a string indicating the font style.
 """
-def setPageNumber (layout, context, pccontext):
-    global pageno
-    global pg2upskip
-    line = ("%d/%d" % (pageno, totalpages)).rjust (maxcpl)
-    if options.verbose > 3:
-        print "setPageNumber: maxcpl=%d" % maxcpl
-    context.translate (0, pg2upskip)
-    layout.set_text (line)
-    context.set_source_rgb (0, 0, 0)    # Black
-    pccontext.update_layout (layout)
-    pccontext.show_layout   (layout)
-    context.translate (0, -pg2upskip)
+def getFontStyleName (style):
+    str = style.__str__ ()
+    match = re.search (r'PANGO_STYLE_([A-Za-z0-9_]+)', str)
+    return "<unknown>" if 0==match else match.group (1)
 
 
 """
-\fn 	startPage (layout, context, pccontext)
+\fn 	getFontVariantName (variant)
 
-\brief	insure that the current page has borders and headings.
-
-description:
-
-  This function is called prior to printing the first
-  listing line on a page.  It insures that the page
-  contains borders and headings if they are enabled.
-
+\brief	Returns a string indicating the font variant.
 """
-def startPage (layout, context, pccontext):
-    global pageready
-    global linepos
-
-    pageready = True
-
-    if options.borders:
-        drawPageBorders (context)
-
-    linepos = umargin
-
-    if options.headings:
-        setPageHeadings (layout, context, pccontext)
+def getFontVariantName (variant):
+    str = variant.__str__ ()
+    match = re.search (r'PANGO_VARIANT_([A-Za-z0-9_]+)', str)
+    return "<unknown>" if 0==match else match.group (1)
 
 
 """
-\fn	finishOutputPage (layout, context, pccontext)
+\fn 	getFontWeightName (weight)
 
-\brief	Finish current page
-
-description:
-
-  This function completes the generation of a page
-  and resets the current translation to start at
-
+\brief	Returns a string indicating the font weight.
 """
-def finishOutputPage (layout, context, pccontext):
-    global subpage
-    global subpageno
-    global pageno
-
-    if False == pageready:
-        return
-
-    if options.twoup:
-        if options.headings:
-
-            if 0 == subpage:
-                # shift over to second page location at page bottom
-                context.translate (maxcolpos + pg2upsep,
-                                   maxlinepos - linepos)
-            else:
-                # stay on second page but guarantee page bottom
-                context.translate (0, maxlinepos - linepos)
-
-            setPageNumber (layout, context, pccontext)
-            context.translate (-maxcolpos - pg2upsep, umargin - maxlinepos)
-            subpage    = 0
-    else:
-        context.translate (0, umargin - linepos)
-
-    pageno += 1
-    pccontext.show_page ()
+def getFontWeightName (weight):
+    str = weight.__str__ ()
+    match = re.search (r'PANGO_WEIGHT_([A-Za-z0-9_]+)', str)
+    return "<unknown>" if 0==match else match.group (1)
 
 
 """
-\fn	newOutputPage (layout, context, pccontext)
-
-\brief  Finished current page and prepares to start next page.
-
-description:
-
-  This may not really finish the page if n-up pages are
-  being printed.  In this case, the actual page output
-  occurs after all subpages for the page are printed.
-
-  In any case, the only interesting part is the handling
-  of the current context translation which moves across
-  the page for n-up printing when switching pages.
-
-  When a physical page is printed, the context translation
-  is updated by finishOutputPage to reflect the initial
-  translation which was:  (lmargin, umargin).
-
-"""
-def newOutputPage (layout, context, pccontext):
-    global pageno
-    global subpage
-    global subpageno
-    global linepos
-    global pageready
-
-    if options.twoup:
-        #  ***********************************************
-        #  *              Two Up Output
-        #  ***********************************************
-        subpageno += 1
-        if subpage:
-            finishOutputPage (layout, context, pccontext)
-            subpage = 0
-        else:
-            context.translate (maxcolpos + pg2upsep, umargin - linepos)
-            subpage = 1
-    else:
-        #  ***********************************************
-        #  *               One Up Output
-        #  ***********************************************
-        finishOutputPage (layout, context, pccontext)
-
-    pageready = False
-
-
-"""
-\fn 	newOutputLine (layout, context, pccontext, line)
-
-\brief  Print 'line' on current page and switch pages if necessary
-
-description:
-
-  The pccontext updates the layout and then shows
-  the layout which ships the line to cairo where it appears
-  on the page.  The translation is updated for the next
-  output line position and that location is checked against
-  the end of page location.
-
-  End of page is always detected by linepos reaching the
-  maxlinepos.  The newOutputPage function is used to complete
-  the current page and switch and prepare the next page.
-
-"""
-def newOutputLine (layout, context, pccontext, line):
-    global linepos
-    global MyName
-    global pageready
-
-    if False == pageready:
-        startPage (layout, context, pccontext)
-
-    layout.set_text (line)
-    context.set_source_rgb (0, 0, 0)         # Black
-
-    if options.verbose > 3:
-        s = layout.get_pixel_extents ().__str__ ()
-        print "%s: %4d - text extents: %d" % (MyName, lineno, linepos)
-	print "%s: pixel %s" % (MyName, s)
-	print ""
-
-    #  **********************************************
-    #  *         Put Line on Page
-    #  **********************************************
-    pccontext.update_layout (layout)
-    pccontext.show_layout   (layout)
-
-    #  **********************************************
-    #  *         Move to next line
-    #  **********************************************
-    context.translate (0, lineskip)
-
-    linepos = linepos + lineskip
-    if linepos >= maxlinepos:
-        #  **********************************************
-        #  *     Output page and Start a new page
-        #  **********************************************
-        newOutputPage (layout, context, pccontext)
-
-
-"""
-\fn	getMaxCPL (layout)
-
-\brief  Compute character and line spacing information.
-
-description:
-
-  Text containing 100 APL quad symbols is displayed in order
-  to determine the character spacing of this (assumed) monospaced
-  font.  All bets are off if the font does not render the APL
-  quad symbol or if this is not a monospaced font.
-
-  The pixel extents for width and height of the string are
-  retrieved and used to compute:
-
-      Variable |  Description
-      ---------|---------------------------------------------------
-      chwidth  |  float value of a single character advance
-      lineskip |  float value of single line height
-      maxcpl   |  print width or maximum characters per line
-      maxlpp   |  maximum number of lines per page
-      chwidth  |  width of a single character (if monospace font)
-
-"""
-def getMaxCPL (layout):
-    global maxcpl
-    global lineskip
-    global chwidth
-
-    #      123456789*123456789*123456789*123456789*123456789*
-    s  = u"⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕"
-    s  = s + s
-
-    layout.set_text (s)
-
-    x        = layout.get_pixel_extents ()
-    w        = x[1][2]
-    h        = x[1][3]
-    lineskip = h
-    lc       = len (s)
-    cw       = (float (w) / lc)
-    chwidth  = cw
-
-    if options.verbose:
-        print x
-        print "getMaxCPL:  X-extent=%6.2f  Y-extent=%6.2f" % (w, h)
-
-    return int ((maxcolpos - cw + 1) / cw)
-
-
-"""
-\fn	initialPageSetting ()
+\fn 	initialPageSetting ()
 
 \brief	Validates command line switches for paper selection
 
 description:
 
-  Insures that the '-paper' option contains the name of a valid
+  Insures that the '--paper' option contains the name of a valid
   paper size.
 
-  Ensures that only one of '-portrait', '-landscape' or '-2up' was
-  specified.
+  Default font size of 5 points if 2up, otherwise 8 points.
+
+  Returns output mode and font size to use.
 
 """
-def initialPageSetting ():
+def initialPageSetting (parser, options):
 
     #  *************************************************
-    #  *     -paper must be one of the known sizes
+    #  *     --paper must be one of the known sizes
     #  *************************************************
 
-    if papersizes.has_key (options.paper) == False:
-        keys = papersizes.keys ()
+    if listing.PAPERSIZES.has_key (options.paper) == False:
+        keys = listing.PAPERSIZES.keys ()
         keys.sort ()
         keys = keys.__str__ ()
         keys = keys[1:len(keys)-1]
         print "%s: available paper sizes are: %s" % (MyName, keys)
         fatalerror (parser, "Invalid page size: '%s'" % options.paper)
 
-    #  *************************************************
-    #  *     Detect conflicting page mode options:
-    #  *************************************************
-
-    errpage = 0
-    if options.portrait != 0:
-        if options.landscape != 0 or options.twoup != 0:
-            errpage = 1
+    if 0 != options.fs:
+        fsize = options.fs
     else:
-        if options.landscape != 0 and options.twoup != 0:
-            errpage = 1
-
-    if errpage != 0:
-        optlist = ''
-        if options.portrait != 0:
-            optlist += ' -portrait'
-        if options.landscape != 0:
-            optlist += ' -landscape'
-        if options.twoup != 0:
-            optlist += ' -2up'
-        fatalerror (parser, "conflicting options %s" % optlist)
-
-
-"""
-\fn	displayLayout ()
-
-\brief	displays debugging information on how the page will be laid out.
-
-"""
-def displayLayout ():
-    print ""
-    print "Layout Size"
-    print "==================="
-    print "totalpages  %d" % totalpages
-    print "totsubpages %d" % totalsubpages
-    print "page:       %s" % page.__str__ ()
-    print "font sz:    %d" % fontsize
-    print "sz:         %s" % layout.get_size ().__str__ ()
-    print "pixel sz:   %s" % layout.get_pixel_size ().__str__ ()
-    print "lmargin:    %d" % lmargin
-    print "umargin:    %d" % umargin
-    print "lineskip:   %d" % lineskip
-    print "maxlinepos: %d" % maxlinepos
-    print "maxcolpos:  %d" % maxcolpos
-    print "maxcpl:     %d" % maxcpl
-    print "maxlpp:     %d" % maxlpp
-    print "==================="
-    print ""
-
-
-"""
-\fn	createHeadings (maxcpl, datentime, basename)
-
-\brief	create heading for top of page
-
-description:
-
-  The page heading contains:
-
-  -  the current date and time left justified
-
-  -  the file name being printed centered
-
-  -  the current page (or subpage) number right justified
-
-  This can only be produced after the page layout has
-  been determined.
-
-"""
-def createHeading (maxcpl, datentime, basename):
-    heading = basename.center (maxcpl)
-    avail   = maxcpl - len (datentime) - 2 - 12
-
-    if avail < 8:
-        fatalerror (parser, "Font size too large")
-
-    if len (basename) > avail:
-        basename = basename[0:avail]
-        heading  = basename.center (maxcpl)
-
-    heading = datentime + heading[len (datentime):]
-
-    if options.verbose > 2:
-        print "%s: datentime = '%s'" % (MyName, datentime)
-
-    return heading
-
-
-"""
-\fn	expandTabs (text, tabs)
-
-\brief	expands tabs in text string to appropriate spaces
-
-"""
-def expandTabs (text, tabs = 7):
-
-    rs = u""
-
-    for c in text:
-        if '\t' == c:
-            rs += u" "
-            while ((len (rs) % tabs) != 0):
-                rs += u" "
+        if options.outmode == listing.OUTPUTMODE_2UP:
+            fsize  = 5
         else:
-            rs += c
+            fsize  = 8
 
-    return rs
+    return (options.outmode, fsize)
 
-
-"""
-\fn	computeTotals (lskip, maxcpl, maxlinepos, file)
-
-\brief	compute totalpages and totalsubpages prior to printing
-
-description:
-
-  This function processes the file contents and determining
-  how each line will print.  As lines are printed, the essential
-  parts of the algorithm needed to detect new subpages and
-  new pages are used to count their number.
-
-  When all lines have been processed, the totals are saved
-  in the totalpages and toalsubpages variables.
-
-  While various global values are accessed, no global
-  variables are modified by this function.
 
 """
-def computeTotals (lskip, maxcpl, maxlinepos, file):
+    \class	listing
 
-    #  first some variables that are modified by sub-functions
-    class cl:
-        lineno       =  0         # input file line number
-        linepos      =  umargin   # page line location
-        subpage      =  0         # sub-page number within a page
-        pageno       =  0         # page number
-        subpageno    =  0         # sub-page number within listing
-        wrapped      =  0         # wrapped line count
+    \brief	class used to produce PDF source file listings
 
-    """
-    \fn		computeNewPage ()
+    The listing class is used to produce a listing of a file's
+    contents class has built-in defaults for every setting that
+    can be modified by calling one of the following methods:
 
-    \brief	deals with the end of a page of ouptut
+       Method                     | Description
+       ---------------------------|----------------------------------------
+       set_page_size (pagename)   | page size: 'letter', 'a4', .. (letter)
+       set_font_name (fontname)   | font name (FreeMono)
+       set_font_size (size)       | font size (2UP=5 else 8)
+       set_filename  (filename)   | input file name for headings ("")
+       set_output_type (pdf_ps)   | produce PDF or PS file (PDF)
+       set_output_mode (mode)     | print OUTPUTMODE_PORTRAIT, ... (PORTRAIT)
+       set_output_modename (name) | Print 'portrait', 'landscape' or '2up'
+       set_output_portrait ()     | Print portrait  (DEFAULT)
+       set_output_landscape ()    | Print landscape
+       set_output_2up ()          | Print 2up
+       set_numbering (onoff)      | Number input lines if onoff != 0 (ON)
+       set_headings (onoff)       | Include headings if onoff != 0 (ON)
+       set_borders (onoff)        | Include page borders if onoff != 0 (ON)
+       set_tabs (setting)         | Tabs set every "setting" columns (8)
+       set_verbose (integer)      | Turn on debugging information (0)
+
+       Method                     | Description
+       ---------------------------|----------------------------------------
+       layoutPage (path)          | Decides on page layout based on settings
+       printListing (lines)       | Generates PDF or PS file
+       displayLayout (lines)      | Prints layout information
+       
+    After setting the listing options, there are two steps:
+
+    1.  layoutPage (path)
+
+        This method receives the name of the file to be
+        generated and uses the current option settings to
+        determine how to layout the listing pages.
+
+    2.  printListing (lines)
+
+        This method receives all of the lines that will
+        be printed.  It lays out each page as it had planned
+        and returns the following information:
+
+        [0] number of lines printed
+        [1] number of lines wrapped
+        [2] number of subpages (or 0 if not 2up)
+        [3] number of pages to print
+
+    The displayLayout() method is available to print the
+    layout information that was calculated.  It may be called
+    after the LayoutPage method has determined the layout.
+
+"""
+class listing:
+
+    #  *****************************************************************
+    #  *                        Constants
+    #  *****************************************************************
+
+    """\var 	PAPERSIZES
+
+    \brief	Provides the size in points of various named paper.
 
     description:
 
-      Issues appear with generating n-up output which means
-      that the end of a page may only be the end of a
-      logical page.
-
-      Reset cl.linepos to reflect the next printed output
-      begins at the top of the printed area plus one line
-      if headings are being displayed.
+      This dictionary is used to determine if the set_page_size
+      function was provided a name for which this program has
+      size information.  The size is provided in portrait mode
+      and will be swapped to produce the landscape page size.
 
     """
-    def computeNewPage ():
-        if options.twoup:
-            #  *     Printing two pages per page
-            cl.subpageno += 1
-            if cl.subpage:
-                #  *  Finished second page
-                cl.pageno += 1
-                cl.subpage = 0
+    PAPERSIZES = {
+
+        # Name          Size
+        # ==========  ===========
+
+        'letter':     (612,  792),
+        'legal':      (612, 1008),
+        'executive':  (540,  720),
+        'folio':      (612,  936),
+        'a4':         (595,  842),
+        'a5':         (420,  595),
+        'a6':         (298,  420),
+        'b5':         (516,  729),
+        'b6':         (354,  499)
+    }
+
+
+    """
+    \var	OUTPUTTYPE_PDF
+
+    \brief	listing to a PDF file
+    """
+    OUTPUTTYPE_PDF       = 0
+
+    """
+    \var	OUTPUTTYPE_PS
+
+    \brief	listing to a PS file
+    """
+    OUTPUTTYPE_PS        = 1
+
+
+    """
+    \var	OUTPUTMODE_PORTRAIT
+
+    \brief	value of outmode for portrait printing
+    """
+    OUTPUTMODE_PORTRAIT  = 0
+
+    """
+    \var	OUTPUTMODE_LANDSCAPE
+
+    \brief	value of outmode for landscape printing
+    """
+    OUTPUTMODE_LANDSCAPE = 1
+
+    """
+    \var	OUTPUTMODE_2UP
+    """
+    OUTPUTMODE_2UP       = 2
+
+
+    """
+    \var	OUTPUT_NOHEADINGS
+
+    \brief	value of headings indicating no page headings
+    """
+    OUTPUT_NOHEADINGS = False
+
+    """
+    \var	OUTPUT_HEADINGS
+
+    \brief	value of headings requesting page headings
+    """
+    OUTPUT_HEADINGS   = True
+
+
+    """
+    \var	OUTPUT_NOBORDERS
+
+    \brief	value of borders indicating no page borders
+    """
+    OUTPUT_NOBORDERS  = False
+
+    """
+    \var	OUTPUT_BORDERS
+
+    \brief	value of borders indicating page borders
+    """
+    OUTPUT_BORDERS    = True
+
+
+    #  *****************************************************************
+    #  *                    Listing Settings
+    #  *****************************************************************
+
+
+    """
+    \var	papername
+
+    \brief	name of the output paper size
+    """
+    papername  = 'letter'		  # **** default: letter
+
+
+    """
+    \var	page
+
+    \brief  size of target paper in points: (width, height)
+    """
+    page       = PAPERSIZES[papername]     # ***** default: letter
+    """
+    \var	outmode
+
+
+    \brief	identify output mode 0=portrait, 1=landscape, 2=2up
+    """
+    outmode    = OUTPUTMODE_PORTRAIT         # *****  default = portrait
+
+    """
+    \var	outtype
+
+    \brief	identify output file type: PDF or PS
+    """
+    outtype    = OUTPUTTYPE_PDF              # ****  default: PDF
+
+    """
+    \var	headings
+
+    \brief	indicates whether page headings are to be displayed
+    """
+    headings    = OUTPUT_HEADINGS           # **** default = headings
+
+    """
+    \var	borders
+
+    \brief	indicates whether page borders are to be displayed
+    """
+    borders     = OUTPUT_BORDERS             # **** default = borders
+
+
+    """
+    \var 	number
+
+    \brief	indicates whether to number input file lines.
+    """
+    number      = False
+
+
+    """
+    \var	tabs
+
+    \brief	indicates the tab settings used to display listing
+
+    description:
+
+      This value is used by printListing to expand tab characters
+      into the correct number of spaces.  This value assumes that
+      tabs are set at equally spaced intervals starting at the
+      value of this variable.  That is, a value of 8 means that
+      tab stops are set at 8, 16, 24, 32, 40, ...
+
+    """
+    tabs	= 8
+
+
+    """
+    \var	fontsize
+
+    \brief	the size in points of the font.
+    """
+    fontsize   = 0
+
+
+    """
+    \var	fontname
+
+    \brief	the name of the font used to display the filename.
+    """
+    fontname   = 'FreeMono'
+
+
+    """
+    \var	basename
+
+    \brief	base name of the input file used in headings.
+
+    description:
+
+    Filled in later based upon the command line.
+    """
+    basename   = ''
+
+
+    """
+    \var	fullname
+
+    \brief	full path name of the input file.
+
+    description:
+
+    Filled in later based upon the command line.
+    """
+    fullname   = ''
+
+
+    """
+    \var	openname
+
+    \brief	path used to open input file.
+    """
+    openname   = ''
+
+
+    """
+    \var        verbose
+
+    \brief	indicates debugging output level
+    """
+    verbose     = 0                          # **** default = None
+
+
+    #  *****************************************************************
+    #  *                 Layout Settings
+    #  *****************************************************************
+
+
+    """
+    \var	umargin
+
+    \brief	The upper margin for the page.
+
+    description:
+
+      The entire page is not normally printable and this value
+      is used to indicate the physical border on top of the
+      page that will not be printed.
+
+      This value is also used for the bottom border.
+    """
+    umargin    = 30
+
+
+    """
+    \var	lmargin
+
+    \brief  The left margin of the page.
+
+    description:
+
+      The entire page is not printable, this value indicates
+      the physical left border on the page that will not be
+      printed.
+
+      This value is also used for the left border.
+    """
+    lmargin    = 30
+
+
+    """
+    \var	chwidth
+
+    \brief	calculated character width
+
+    description:
+
+      This is an average of the space required for 100 instances
+      of the canonical "wide" character.
+
+    """
+    chwidth    = 1       # filled in by getMaxCPL
+
+
+    """
+    \var	lineskip
+
+    \brief	the increase in the Y-coordinate value for one output line.
+
+    description:
+
+      This value depends upon the font and the size of the font.
+      The actual value is computed after that information is
+      known.
+
+    """
+    lineskip   = 0
+
+
+    """
+    \var	maxlinepos
+
+    \brief  the first vertical location beyond the last printable line.
+
+    description:
+
+      Lines of output are generated until linepos becomes
+      greater than or equal to maxlinepos.  maxlinepos is
+      takes the following factors into account:
+
+      - lineskip:  the amount by which every line increases the
+                   vertical page location.
+
+      - page[1]:   the total imaging height of the page
+
+      - umargin:   the space at the top and bottom of the page to
+                   leave blank.
+
+     1. The first step is to compute the amount of vertical space
+        that could be used:
+
+              page[1] - (2 * umargin)
+
+     2. Then this space is divided by the lineskip value to obtain
+        the number of lines that fit in the vertical space.
+        Truncated to an integer this reflects the actual number of
+        lines per page that fit the vertical area.
+
+     3.  The actual number of lines per page is then multiplied by
+         lineskip to obtain the vertical distance that will be
+         printed.
+
+     4.  Adding umargin takes into account the upper margin that is
+         not printed.
+
+    """
+    maxlinepos = 0
+
+
+    """
+    \var	maxcolpos
+
+    \brief	first location beyond end of output line.
+
+    description:
+
+    This value is computed based upon:
+
+    - the page size
+
+    - printing mode: PORTRAIT, LANDSCAPE, 2UP
+
+    - the font name and size
+
+    """
+    maxcolpos  = 0
+
+
+    #  *****************************************************************
+    #  *                  Output Context
+    #  *****************************************************************
+
+
+    """
+    \var        surface
+
+    \brief	Cairo surface that is being used.
+    """
+    surface   = False
+
+    """
+    \var	context
+
+    \brief	Context from the Cairo surface.
+    """
+    context   = False
+
+    """
+    \var	layout
+
+    \brief	pango Cairo layout
+    """
+    layout    = False
+
+    """
+    \var	font
+
+    \brief	pango font description.
+    """
+    font      = False
+
+    """
+    \var	pccontext
+
+    \brief	pango Cairo context from Cairo context.
+    """
+    pccontext = False
+
+
+    """
+    \var	linepos
+
+    \brief	the current vertical page location in points
+    """
+    linepos    = umargin
+
+
+    """
+    \var	lineno
+
+    \brief	the line number of the input file being processed.
+    """
+    lineno     = 0
+
+
+    """
+    \var	wrapped
+    
+    \brief	count of number of lines that have wrapped
+    """
+    wrapped    = 0
+
+
+    """
+    \var	pageno
+
+    \brief	the current physical page number
+    """
+    pageno     = 1
+
+
+    """
+    \var	totalpages
+
+    \brief	the total number of pages that will be printed
+    """
+    totalpages    = 0
+
+
+    """
+    \var	subpageno
+
+    \brief	the total number of subpages that have been printed.
+    """
+    subpageno  = 0
+
+
+    """
+    \var	totalsubpages
+
+    \brief	the total number subpages that will be printed
+    """
+    totalsubpages = 0
+
+
+    """
+    \var	subpage
+
+    \brief	the subpage within the current physical page
+
+    description:
+
+      This value indicates the subpage number on the current
+      page.  When the page is finished, this value goes back to
+      0.
+
+    """
+    subpage    = 0
+
+
+    """
+    \var	pageready
+
+    \brief	page borders and headings are present.
+    """
+    pageready  = False
+
+
+    """
+    \var	datentime
+
+    \brief	the date and time displayed in page headings.
+    """
+    datentime  = time.strftime ("%b %d, %Y %H:%M")
+
+
+    """
+    \var	pg2upskip
+
+    \brief	the additional lineskip used to display physical page numbers
+
+    description:
+
+      Used in 2UP mode to display the physical page number below
+      the page borders on the bottom right corner of the page.
+
+    """
+    pg2upskip  = 3       # used in setPageNumber for 2up page number skip
+
+
+    """
+    \var	pg2upsep
+
+    \brief  the white space between sub-pages on a physical page.
+    """
+    pg2upsep   = 14      # white space between subpages
+
+
+    """
+    \var	halpha
+
+    \brief	alpha value for greyed out heading (0...1) (white...black)
+    """
+    halpha     = 0.15    # alpha value for greyed out heading  0=white, 1=black
+
+
+    """
+    \var	heading
+
+    \brief	page heading line.
+
+    description:
+
+      Filled in later based upon the command line and target
+      paper size.  The heading contains the date and time, base
+      file name being displayed and the page number.
+
+    """
+    heading    = ""
+
+
+    #  *****************************************************************
+    #  *                    Setting Methods
+    #  *****************************************************************
+
+
+    """
+    \fn 	set_page_size (papername)
+
+    \brief	Initializes paper size.
+    """
+    def set_page_size (self, papername):
+
+        if self.PAPERSIZES.has_key (papername) == False:
+            raise IndexError('unknown paper size name')
+
+        self.papername = papername
+        self.page      = self.PAPERSIZES[papername]
+
+
+    """
+    \fn 	set_font_name (name)
+
+    \brief	Initializes font name.
+    """
+    def set_font_name (self, name):
+        self.fontname = name
+
+
+    """
+    \fn 	set_font_size (size)
+
+    \brief	Initializes font size.
+    """
+    def set_font_size (self, size):
+        if size <= 0:
+            raise IndexError ('font size <= 0')
+        if size > 14:
+            raise IndexError ('font size too large')
+
+        self.fontsize = size
+
+
+    """
+    \fn 	set_filename (name)
+
+    \brief	record the source file name being printed
+    """
+    def set_filename (self, name):
+        self.openname = os.path.expanduser (name)
+        self.basename = os.path.basename (name)
+        self.fullname = os.path.abspath  (name)
+
+
+    """
+    \fn 	set_output_type (pdf_ps)
+
+    \brief	indicate listing file type
+    """
+    def set_output_type (self, pdf_ps):
+        if pdf_ps < listing.OUTPUTTYPE_PDF or pdf_ps > listing.OUTPUTTYPE_PS:
+            raise IndexError ("invalid output type %d" % pdf_ps)
+        self.outtype = pdf_ps
+
+
+    """
+    \fn 	set_output_mode (mode)
+
+    \brief	Initializes output mode (PORTRAIT, LANDSCAPE, 2UP)
+    """
+    def set_output_mode (self, style):
+        if style < listing.OUTPUTMODE_PORTRAIT or style > listing.OUTPUTMODE_2UP:
+            raise IndexError ("invalid output mode %d" % style)
+        self.outmode = style
+
+
+    """
+    \fn 	set_output_modename (style)
+
+    \brief	Initializes output mode ('portrait', 'landscape', '2up')
+    """
+    def set_output_modename (self, style):
+        if style == 'portrait':
+            self.outmode = listing.OUTPUTMODE_PORTRAIT
+        else:
+            if style == 'landscape':
+                self.outmode = listing.OUTPUTMODE_LANDSCAPE
             else:
-                #  *  Finished first page
-                cl.subpage = 1
-        else:
-            #         One page per physical page
-            cl.pageno += 1
-        #  *          Print at top of new page
-        cl.linepos = umargin
-        if options.headings:
-            #         Account for heading line
-            cl.linepos += lineskip
+                if style == '2up':
+                    self.outmode = listing.OUTPUTMODE_2UP
+                else:
+                    raise IndexError ("unknown output mode '%s'" % style)
+
 
     """
-    \fn 	computeNewLine ()
+    \fn 	set_output_portrait ()
 
-    \brief	handle a new line being printed
+    \brief	Initializes output mode (portrait, landscape, 2up)
+    """
+    def set_output_portrait (self):
+        self.outmode = listing.OUTPUTMODE_PORTRAIT
+
+
+    """
+    \fn 	set_output_landscape ()
+
+    \brief	Initializes output mode (portrait, landscape, 2up)
+    """
+    def set_output_landscape (self):
+        self.outmode = listing.OUTPUTMODE_LANDSCAPE
+
+
+    """
+    \fn 	set_output_2up ()
+
+    \brief	Initializes output mode (portrait, landscape, 2up)
+    """
+    def set_output_2up (self):
+        self.outmode = listing.OUTPUTMODE_2UP
+
+
+    """
+    \fn 	set_numbering (onoff)
+
+    \brief	Initializes line numbering (True or False)
+    """
+    def set_numbering (self, onoff):
+        self.number = onoff
+
+
+    """
+    \fn 	set_headings (onoff)
+
+    \brief	Control page headings.
+    """
+    def set_headings (self, onoff):
+        self.headings = onoff
+
+    """
+    \fn 	set_borders (onoff)
+
+    \brief	Control drawing page borders.
+    """
+    def set_borders  (self, onoff):
+        self.borders  = onoff
+
+
+    """
+    \fn 	set_tabs (tabs)
+
+    \brief	provide tab settings
 
     description:
 
-      The only interesting thing here is that there must
-      be a check for the end of the page and do the
-      end of page processing if appropriate.
     """
-    def computeNewLine ():
-        cl.linepos += lineskip
-        if cl.linepos >= maxlinepos:
-            #  *******************************************
-            #  *     Page is full - start a new page
-            #  *******************************************
-            computeNewPage ()
+    def set_tabs (self, tabsettings):
+        self.tabs = tabsettings
 
-    #  ***************************************************
-    #  *   Start Here:  Examine every line of file
-    #  ***************************************************
 
-    for line in file:
-        cl.lineno += 1
-        line       = expandTabs (line).rstrip ()
-        #  *           generate line text to print
-        if options.number:
-            text = ('%4d: ' % cl.lineno) + line
+    """
+    \fn 	set_verbose (number)
+
+    \brief	control debugging information generated.
+    """
+    def set_verbose (self, num):
+        self.verbose = num
+
+
+    #  *****************************************************************
+    #  *                 Layout Calculations
+    #  *****************************************************************
+
+    """
+    \fn 	getMaxCPL (layout)
+
+    \brief  Compute character and line spacing information.
+
+    description:
+
+      Text containing 100 APL quad symbols is displayed in order
+      to determine the character spacing of this (assumed)
+      monospaced font.  All bets are off if the font does not
+      render the APL quad symbol or if this is not a monospaced
+      font.
+
+      The pixel extents for width and height of the string are
+      retrieved and used to compute:
+
+         Variable |  Description
+         ---------|---------------------------------------------------
+         chwidth  |  float value of a single character advance
+         lineskip |  float value of single line height
+         maxcpl   |  print width or maximum characters per line
+         maxlpp   |  maximum number of lines per page
+         chwidth  |  width of a single character (if monospace font)
+
+    """
+    def getMaxCPL (self, layout):
+
+        #      123456789*123456789*123456789*123456789*123456789*
+        s  = u"⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕⎕"
+        s  = s + s
+
+        layout.set_text (s)
+
+        x             = layout.get_pixel_extents ()
+        w             = x[1][2]
+        h             = x[1][3]
+        self.lineskip = h
+        lc            = len (s)
+        cw            = (float (w) / lc)
+        self.chwidth  = cw
+
+        if self.verbose:
+            print x
+            print "getMaxCPL:  X-extent=%6.2f  Y-extent=%6.2f" % (w, h)
+
+        return int ((self.maxcolpos - cw + 1) / cw)
+
+
+    """
+    \fn 	layoutPage
+
+    \brief	Determine how to layout page according to settings.
+    """
+    def layoutPage (self, targetfile):
+
+        if 0 == len (self.fontname):
+            raise NameError ('fontname not defined')
+
+        if 0 == self.fontsize:
+            raise IndexError ('invalid font size')
+
+        mypage = self.page
+
+        if self.outmode > 0:
+            mypage = self.page = ( mypage[1], mypage[0] )
+            if self.verbose:
+                print "listing:  generating landscape mode"
+
+        if listing.OUTPUTTYPE_PDF == self.outtype:
+            self.surface = cairo.PDFSurface (targetfile, mypage[0], mypage[1])
         else:
-            text = line
+            # postscript file target file
+            if self.outmode > 0:
+                self.surface = cairo.PSSurface (targetfile, mypage[1], mypage[0])
+            else:
+                self.surface = cairo.PSSurface (targetfile, mypage[0], mypage[1])
 
-        #  *      check for and deal with line wrapping
-        llen  =  len (text)
-        if llen > maxcpl:
-            cl.wrapped += 1
-            while len (text) > maxcpl:
-                cnt  = maxcpl - 1
-                this = text[0:cnt]      # before wrap
-                that = text[cnt:]       # after wrap
-                computeNewLine ()
-                # ****************************************
-                # *   produce continuation line text
-                # ****************************************
-                if options.number:
-                    text = "123456" + that
+            if self.outmode > 0:
+                self.surface.dsc_begin_page_setup ()
+                self.surface.dsc_comment ("%%PageOrientation: Landscape")
+
+        self.context = cairo.Context (self.surface)
+
+        if listing.OUTPUTTYPE_PS == self.outtype and self.outmode > 0:
+            #  need to rotate page around the center of page
+            self.context.translate (mypage[1]/2, mypage[0]/2)
+            self.context.rotate    (-3.141592653589793/2)
+            self.context.translate (-mypage[0]/2, -mypage[1]/2)
+        
+        self.font = pango.FontDescription (self.fontname + " %d" % self.fontsize)
+
+        if self.verbose > 0:
+            print "listing:  Font Family = '%s'" % self.font.get_family ()
+
+        #   Create a white page
+        self.context.rectangle (0, 0, mypage[0], mypage[1])
+        self.context.set_source_rgb (1, 1, 1)            # White
+        self.context.fill ()
+
+        #   Create pango cairo context
+        self.pccontext = pangocairo.CairoContext (self.context)
+        self.pccontext.set_antialias (cairo.ANTIALIAS_SUBPIXEL)
+            
+        if self.outmode == listing.OUTPUTMODE_2UP:
+            #
+            # +---------------------+ +--------------------------------------+
+            # |(lmargin, umargin)   | |(lmargin + maxcolpos + 14, umargin)   |
+            # |        |            | |                         |            |
+            # |        |            | |                         |            |
+            # |        |            | |                         |            |
+            # |        |            | |                         |            |
+            # |        |            | |                         |            |
+            # |       \ /           | |                        \ /           |
+            # |(lmargin, maxlinepos)| |(lmargin + maxcolpos + 14, maxlinepos)|
+            # +---------------------+ +--------------------------------------+
+            #
+            self.maxcolpos = ((mypage[0] - (self.lmargin * 2) -
+                               self.pg2upsep) / 2)
+        else:
+            self.maxcolpos =  mypage[0] - (self.lmargin * 2)
+        
+        #  create pango cairo layout and initialize font
+        self.layout = self.pccontext.create_layout ()
+        self.layout.set_font_description (self.font)
+
+        #  finalize page layout
+
+        self.lineskip   = 0
+        self.maxcpl     = self.getMaxCPL (self.layout)
+        self.maxlpp     = int ((mypage[1] - 2 * self.umargin) / self.lineskip)
+        self.maxlinepos = self.umargin + self.maxlpp * self.lineskip
+
+        if self.maxlpp < 8:
+            raise IndexError ('font size too large: lpp < 8')
+
+
+    #  *****************************************************************
+    #  *                  Output Generation
+    #  *****************************************************************
+
+    """
+    \fn 	drawPageBorders (context)
+
+    \brief  uses cairo context to draw border around current page.
+
+    description:
+
+      The border is drawn using maxcolpos and page[1] (height)
+      using the Cairo rectangle function using black ink and a
+      line width of 1.
+
+      If headings are being generated, then the first line of
+      output on the page is the heading which appears shaded
+      using the alpha channel.  The first line is selected using
+      the Cairo rectangle function using maxcolpos for the width
+      and lineskip + 4 for the height.
+
+    """
+    def drawPageBorders (self, context):
+        context.set_line_width (1)
+        context.set_source_rgb (0, 0, 0)           # Black
+
+        context.rectangle (-4, -4,
+                           self.maxcolpos + 4,
+                           self.maxlinepos - self.umargin + 5)
+
+        context.stroke ()
+
+        if self.headings:
+            context.set_line_width (0.25)
+            context.set_source_rgba (0.25, 0.25, 0.25, self.halpha)
+            context.rectangle (-4, -4,
+                               self.maxcolpos + 4, self.lineskip + 4)
+            context.fill ()
+
+
+    """
+    \fn 	setPageHeadings (layout, context, pccontext)
+
+    \brief	Draw the page heading.
+
+    description:
+
+      The page heading is simply the first line of output on each
+      page.  Its appearance is shaded to distinguish the heading
+      from the file contents.
+
+      The basic heading line was generated during startup, the
+      only work here is to add the page number to each page (or
+      subpage).
+
+      Note that newOutputLine is used to print the line which
+      could be a problem if the page could only hold a single
+      line of output.
+
+    """
+    def setPageHeadings (self, layout, context, pccontext):
+
+        if self.outmode == listing.OUTPUTMODE_2UP:
+            strpageno = "Page %d/%d" % (self.subpageno + 1, self.totalsubpages)
+        else:
+            strpageno = "Page %d/%d" % (self.pageno, self.totalpages)
+
+        if 0 == self.borders:
+            # Add shading
+            context.set_line_width (0.25)
+            context.set_source_rgba (0.25, 0.25, 0.25, self.halpha)
+            context.rectangle (-4, -4,
+                               self.maxcolpos + 4, self.lineskip + 4)
+            context.fill ()
+
+        plen      = len (strpageno)
+        hlen      = len (self.heading)
+        self.heading   = self.heading[0:hlen - plen] + strpageno
+        self.newOutputLine (layout, context, pccontext, self.heading)
+
+
+    """
+    \fn	setPageNumber (layout, context, pccontext)
+
+    \brief  Adds the actual page number when generating 2up output.
+
+    description:
+
+      This function is called when the last subpage of output
+      appears on the physical page.  This numbers the actual page
+      below the page borders.
+
+    """
+    def setPageNumber (self, layout, context, pccontext):
+        line = ("%d/%d" % (self.pageno, self.totalpages)).rjust (self.maxcpl)
+        if self.verbose > 3:
+            print "setPageNumber: maxcpl=%d" % self.maxcpl
+        context.translate (0, self.pg2upskip)
+        layout.set_text (line)
+        context.set_source_rgb (0, 0, 0)    # Black
+        pccontext.update_layout (layout)
+        pccontext.show_layout   (layout)
+        context.translate (0, -self.pg2upskip)
+
+
+    """
+    \fn 	startPage (layout, context, pccontext)
+
+    \brief	insure that the current page has borders and headings.
+
+    description:
+
+      This function is called prior to printing the first listing
+      line on a page.  It insures that the page contains borders
+      and headings if they are enabled.
+
+    """
+    def startPage (self, layout, context, pccontext):
+        self.pageready = True
+
+        if self.borders:
+            self.drawPageBorders (context)
+
+        self.linepos = self.umargin
+
+        if self.headings:
+            self.setPageHeadings (layout, context, pccontext)
+
+
+    """
+    \fn 	finishOutputPage (layout, context, pccontext)
+
+    \brief	Finish current page
+
+    description:
+
+      This function completes the generation of a page
+      and resets the current translation to start at
+
+    """
+    def finishOutputPage (self, layout, context, pccontext):
+
+        if False == self.pageready:
+            return
+
+        if self.outmode == self.OUTPUTMODE_2UP:
+            if 0 == self.subpage:
+                # shift over to second page location at page bottom
+                context.translate (self.maxcolpos  + self.pg2upsep,
+                                       self.maxlinepos - self.linepos)
+            else:
+                # stay on second page but guarantee page bottom
+                context.translate (0, self.maxlinepos - self.linepos)
+
+            self.setPageNumber (layout, self.context, self.pccontext)
+            context.translate (-self.maxcolpos - self.pg2upsep,
+                                       self.umargin    - self.maxlinepos)
+            self.subpage    = 0
+        else:
+            context.translate (0, self.umargin - self.linepos)
+
+        self.pageno += 1
+        pccontext.show_page ()
+
+
+    """
+    \fn 	newOutputPage (layout, context, pccontext)
+
+    \brief	Finish current page
+
+    description:
+
+      This may not really finish the page if n-up pages are being
+      printed.  In this case, the actual page output occurs after
+      all subpages for the page are printed.
+
+      In any case, the only interesting part is the handling of
+      the current context translation which moves across the page
+      for n-up printing when switching pages.
+
+      When a physical page is printed, the context translation is
+      updated by finishOutputPage to reflect the initial
+      translation which was: (lmargin, umargin).
+
+    """
+    def newOutputPage (self, layout, context, pccontext):
+
+        if listing.OUTPUTMODE_2UP == self.outmode:
+            #                Two Up Output
+            self.subpageno += 1
+            if self.subpage:
+                self.finishOutputPage (layout, context, pccontext)
+                self.subpage = 0
+            else:
+                context.translate (self.maxcolpos + self.pg2upsep,
+                                   self.umargin   - self.linepos)
+                self.subpage = 1
+        else:
+            #                 One Up Output
+            self.finishOutputPage (layout, context, pccontext)
+
+        #           Put nothing on next page until something is printed
+        self.pageready = False
+
+
+    """
+    \fn 	newOutputLine (layout, context, pccontext, line)
+
+    \brief	Print line on current page switching pages if necessary
+
+    description:
+
+    The pccontext updates the layout and then shows
+    the layout which ships the line to cairo where it appears
+    on the page.  The translation is updated for the next
+    output line position and that location is checked against
+    the end of page location.
+
+    End of page is always detected by linepos reaching the
+    maxlinepos.  The newOutputPage function is used to complete
+    the current page and switch and prepare the next page.
+
+    """
+    def newOutputLine (self, layout, context, pccontext, line):
+
+        if False == self.pageready:
+            #  draw borders and headings
+            self.startPage (layout, context, pccontext)
+
+        layout.set_text (line)
+        context.set_source_rgb (0, 0, 0)         # Black
+
+        if self.verbose > 3:
+            s = layout.get_pixel_extents ().__str__ ()
+            print "listing: %4d - text extents: %d" % (self.lineno, self.linepos)
+            print "listing: pixel %s" % s
+            print ""
+
+        #           Put Line on Page
+        pccontext.update_layout (layout)
+        pccontext.show_layout   (layout)
+
+        #           Move to next line
+        context.translate (0, self.lineskip)
+
+        self.linepos = self.linepos + self.lineskip
+        if self.linepos >= self.maxlinepos:
+            #       Output page and Start a new page
+            self.newOutputPage (layout, context, pccontext)
+
+
+    """
+    \fn	displayLayout (lines)
+
+    \brief	displays page layout information for debugging.
+
+    """
+    def displayLayout (self, lines):
+        if 0 == self.totalpages:
+            if 0 != len (lines):
+                totals = self.computeTotals (self.lineskip, self.maxcpl,
+                                             self.maxlinepos, lines)
+                self.totalpages, self.totalsubpages = totals
+        print ""
+        print "Layout Size"
+        print "==================="
+        print "totalpages  %d" % self.totalpages
+        print "totsubpages %d" % self.totalsubpages
+        print "page:       %s" % self.page.__str__ ()
+        print "font sz:    %d" % self.fontsize
+        print "sz:         %s" % self.layout.get_size ().__str__ ()
+        print "pixel sz:   %s" % self.layout.get_pixel_size ().__str__ ()
+        print "lmargin:    %d" % self.lmargin
+        print "umargin:    %d" % self.umargin
+        print "lineskip:   %d" % self.lineskip
+        print "maxlinepos: %d" % self.maxlinepos
+        print "maxcolpos:  %d" % self.maxcolpos
+        print "maxcpl:     %d" % self.maxcpl
+        print "maxlpp:     %d" % self.maxlpp
+        print "==================="
+        print ""
+
+
+    """
+    \fn 	createHeading (maxcpl, datentime, basename)
+
+    \brief	create heading for top of page
+
+    description:
+
+      The page heading contains:
+
+      -  the current date and time left justified
+
+      -  the file name being printed centered
+
+      -  the current page (or subpage) number right justified
+
+      This can only be produced after the page layout has
+      been determined.
+
+    """
+    def createHeading (self, maxcpl, datentime, basename):
+        self.heading = basename.center (self.maxcpl)
+        avail        = self.maxcpl - len (self.datentime) - 2 - 12
+
+        if avail < 8:
+            raise IndexError ('Font size %d too large' % self.fontsize)
+
+        if len (self.basename) > avail:
+            self.basename = basename[0:avail]
+
+        self.heading = self.basename.center (self.maxcpl)
+
+        self.heading = self.datentime + self.heading[len (self.datentime):]
+
+        if self.verbose > 2:
+            print "listing: datentime = '%s'" % self.datentime
+
+
+    """
+    \fn	expandTabs (text, tabs)
+
+    \brief	expands tabs in text string to appropriate spaces
+
+    description:
+
+      Examines every character of text copying non-tabs and
+      replacing tab characters with an appropriate number
+      of spaces according to the tabs parameter.
+
+    """
+    @staticmethod
+    def expandTabs (text, tabs = 8):
+
+        rs = u""
+        sp = u"                                                  "
+        while (len (sp) < tabs):
+            sp += sp
+
+        for c in text:
+            if '\t' == c:
+                rs += u" "
+                tl  = len (rs)
+                cnt = (tabs - 1) - (tl - 1) % tabs
+                rs += sp[0:cnt]
+            else:
+                rs += c
+
+        return rs
+
+
+    """
+    \fn 	computeTotals (lskip, maxcpl, maxlinepos, file)
+
+    \brief	compute totalpages and totalsubpages prior to printing
+
+    description:
+
+      This function processes the file contents and determining
+      how each line will print.  As lines are printed, the
+      essential parts of the algorithm needed to detect new
+      subpages and new pages are used to count their number.
+
+      When all lines have been processed, the totals are saved in
+      the totalpages and toalsubpages variables.
+
+      While various global values are accessed, no global
+      variables are modified by this function.
+
+    """
+    def computeTotals (self, lskip, maxcpl, maxlinepos, file):
+
+        #  variables modified by sub-functions
+        class cl:
+            lineno       =  0             # input file line number
+            linepos      =  self.umargin  # page line location
+            subpage      =  0             # sub-page number within a page
+            pageno       =  0             # page number
+            subpageno    =  0             # sub-page number within listing
+            wrapped      =  0             # wrapped line count
+
+
+        """
+        \fn		computeNewPage ()
+
+        \brief	deals with the end of a page of ouptut
+
+        description:
+
+        Issues appear with generating n-up output which means
+        that the end of a page may only be the end of a
+        logical page.
+
+        Reset cl.linepos to reflect the next printed output
+        begins at the top of the printed area plus one line
+        if headings are being displayed.
+
+        """
+        def computeNewPage ():
+            if listing.OUTPUTMODE_2UP == self.outmode:
+                #         Printing two pages per page
+                cl.subpageno += 1
+                if cl.subpage:
+                    #     Finished second page
+                    cl.pageno += 1
+                    cl.subpage = 0
                 else:
-                    text = that
-        #  ***********************************************
-        #  *   line didn't wrap or last wrapped segment
-        #  ***********************************************
-        computeNewLine ()
-
-    #  ***************************************************
-    #  *
-    #  *  Finished processing all lines: return totals
-    #  *
-    #  ***************************************************
-
-    if options.verbose:
-        print ("%s: computeTotals lines=%d, linepos=%d, pages=%d, subpages=%d" %
-               (MyName, cl.lineno, cl.linepos, 1 + cl.pageno, 1 + cl.subpageno))
-
-    return (cl.pageno + 1, cl.subpageno + 1)
+                    #     Finished first page
+                    cl.subpage = 1
+            else:
+                #         One page per physical page
+                cl.pageno += 1
+            #             Print at top of new page
+            cl.linepos = self.umargin
+            if self.headings:
+                #         Account for heading line
+                cl.linepos += self.lineskip
 
 
-#   **************************************************
-#   *
-#   *   Setup command line parser
-#   *
-#   **************************************************
+        """
+        \fn 	computeNewLine ()
 
-parser = argparse.ArgumentParser(
+        \brief	handle a new line being printed
 
-    prog        = MyName,
-    description = 'Prints unicode file or stdin to pdf file.'
+        description:
 
-)
+        The only interesting thing here is that there must
+        be a check for the end of the page and do the
+        end of page processing if appropriate.
+        """
+        def computeNewLine ():
+            cl.linepos += self.lineskip
+            if cl.linepos >= self.maxlinepos:
+                #  Page is full - start a new page
+                computeNewPage ()
 
-parser.add_argument ('-o',
-		     help    = 'Set output PDF file path',
-		     default = '')
+        #  ***************************************************
+        #  *   computeTotals:  Examine every line of file
+        #  ***************************************************
 
-parser.add_argument ('-pdf',
-                     dest    = 'otype',
-                     action  = 'store_const',
-                     const   = 'pdf',
-                     help    = 'Produce PDF file')
+        for line in file:
+            cl.lineno += 1
+            line       = self.expandTabs (line).rstrip ()
+            #  generate line text to print
+            if self.number:
+                text = ('%4d: ' % cl.lineno) + line
+            else:
+                text = line
 
-parser.add_argument ('-ps',
-                     dest    = 'otype',
-                     action  = 'store_const',
-                     const   = 'ps',
-                     help    = 'Produce postscript file')
+            #  check for and deal with line wrapping
+            llen  =  len (text)
+            if llen > self.maxcpl:
+                cl.wrapped += 1
+                while len (text) > self.maxcpl:
+                    cnt  = self.maxcpl - 1
+                    this = text[0:cnt]      # before wrap
+                    that = text[cnt:]       # after wrap
+                    computeNewLine ()
+                    #  produce continuation line text
+                    if self.number:
+                        text = "123456" + that
+                    else:
+                        text = that
+            #  line didn't wrap or last wrapped segment
+            computeNewLine ()
 
-parser.set_defaults (otype   = 'pdf')
+        #      Finished processing all lines: return totals
 
-parser.add_argument ('-overwrite',
-		     help    = 'Allow PDF file to be overwritten.',
-		     default = 0,
-		     action  = 'count')
+        if self.verbose:
+            print (("listing: computeTotals lines=%d, linepos=%d, " +
+                    "pages=%d, subpages=%d") %
+                   (cl.lineno,         cl.linepos,
+                    1 + cl.pageno, 1 + cl.subpageno))
 
-parser.add_argument ('-paper',
-		     help    = 'Change the default paper size.',
-		     default = 'letter')
+        return (cl.pageno + 1, cl.subpageno + 1)
 
-parser.add_argument ('-portrait',
-                     help    = 'View page in portrait mode.',
-                     action  = 'count',
-                     default = 0)
 
-parser.add_argument ('-landscape',
-                     help    = 'View page in landscape mode.',
-                     action  = 'count',
-                     default = 0)
+    """
+    \fn 	printListing (lines)
 
-parser.add_argument ('-2up',
-                     help    = 'Print two pages per page in landscape mode.',
-                     dest    = 'twoup',
-                     action  = 'count',
-                     default = 0)
+    \brief	Generate listing
+    """
+    def printListing (self, lines):
 
-parser.add_argument ('-tabs',
-                     help    = 'Provide tab stop settings for input file',
-                     default = 8)
+        if self.headings:
+            self.createHeading (self.maxcpl, self.datentime, self.basename)
 
-parser.add_argument ('-number',
-		     help    = 'Number output lines.',
-		     action  = 'count',
-		     default = 0)
+        if 0 == self.totalpages:
+            totals = self.computeTotals (self.lineskip,   self.maxcpl,
+                                         self.maxlinepos, lines)
 
-parser.add_argument ('-borders',
-                     help    = 'Draw borders around page.',
-                     action  = 'store_true')
+            self.totalpages, self.totalsubpages = totals
 
-parser.add_argument ('-noborders',
-		     help    = 'Do not draw borders around page.',
-                     dest    = 'borders',
-		     action  = 'store_false')
+        self.context.translate (self.lmargin, self.umargin)
 
-parser.set_defaults (borders = True)
+        for line in lines:
+            self.lineno  += 1
+            line     = self.expandTabs (line, self.tabs).rstrip ()
 
-parser.add_argument ('-headings',
-                     help    = 'Print page headings.',
-                     action  = 'store_true')
+            if self.number:
+                ltext = ('%4d: ' % self.lineno) + line
+            else:
+                ltext = line
 
-parser.add_argument ('-noheadings',
-		     help    = 'Do not include page headings.',
-                     dest    = 'headings',
-		     action  = 'store_false')
+            llen   = len (ltext)
 
-parser.set_defaults (headings= True)
+            if llen > self.maxcpl:
+                self.wrapped += 1
 
-parser.add_argument ('-font',
-		     help    = 'Name of font used to display file.',
-		     default = 'APLUA')
+                if self.verbose > 0:
+                    print ("listing: Wrap line=%d, len=%d, maxcpl=%d" %
+                           (self.lineno, llen, self.maxcpl))
 
-parser.add_argument ('-fs',
-		     help    = 'Size in points for font.',
-		     type    = int,
-		     default = 0)
+                    if self.verbose > 1:
+                        print text[0:maxcpl]
 
-parser.add_argument ('-lineskip',
-		     help    = 'Additional line skip in points.',
-		     type    = int,
-		     default = 0)
+                while len (ltext) > self.maxcpl:
+                    cnt  = self.maxcpl - 1
+                    this = ltext[0:cnt]
+                    that = ltext[cnt:]
+                    self.newOutputLine (self.layout,    self.context,
+                                        self.pccontext, this + "\\")
 
-parser.add_argument ('-verbose', '-v',
-		     help    = 'Display additional information',
-		     default = 0,
-		     action  = 'count')
+                    if self.number:
+                        ltext = "      " + that
+                    else:
+                        ltext = that
 
-parser.add_argument ('-test',
-                     action  = 'store_const',
-                     const   = True,
-                     help    = 'Examine arguments and detect errors')
+            self.newOutputLine (self.layout, self.context, self.pccontext, ltext)
 
-parser.add_argument ('filename',
-		     help    = 'File to be printed.')
+        self.finishOutputPage (self.layout, self.context, self.pccontext)
 
+        return (self.lineno, self.wrapped,
+                0 if listing.OUTPUTMODE_2UP!=self.outmode else self.subpageno+1,
+                self.pageno - 1)
 
 #   **************************************************
-#   *
-#   *   Parse command line and display results if -v
-#   *
+#   *      End of listing class
 #   **************************************************
 
-options = parser.parse_args ()
 
-if options.verbose > 0:
-    printoptions (options)
+"""
+\fn 	cmdLine ()
+
+\brief	create command line argument parser.
+
+description:
+
+  This function returns the parser to be used to parse the
+  command line.
+
+"""
+def cmdLine ():
+
+    parser = argparse.ArgumentParser(
+
+        prog        = MyName,
+        description = 'Prints unicode FILENAME to PDF file.'
+
+    )
+
+    parser.add_argument ('-o',     '--output',
+                         dest    = 'o',
+                         help    = 'Set output PDF file path',
+                         metavar = 'OUTFILE',
+                         default = '')
+
+    parser.add_argument ('--overwrite',  '-w',
+                         help    = 'Allow PDF file to be overwritten.',
+                         dest    = 'overwrite',
+                         default = 0,
+                         action  = 'count')
+
+    group0 = parser.add_mutually_exclusive_group (required=False)
+
+    group0.add_argument ('--pdf',        '-S',
+                         help    = 'Produce PDF file',
+                         dest    = 'otype',
+                         action  = 'store_const',
+                         const   = 'pdf')
+
+    group0.add_argument ('--ps',         '-s',
+                         help    = 'Produce postscript file',
+                         dest    = 'otype',
+                         action  = 'store_const',
+                         const   = 'ps')
+
+    parser.set_defaults (otype   = 'pdf')
+
+    parser.add_argument ('--paper',      '-P',
+                         help    = 'Change the default paper size.',
+                         dest    = 'paper',
+                         metavar = 'PAPERSIZE',
+                         default = 'letter')
+
+    group0 = parser.add_mutually_exclusive_group (required=False)
+
+    group0.add_argument ('--portrait',   '-p',
+                         help    = 'View page in portrait mode.',
+                         dest    = 'outmode',
+                         action  = 'store_const',
+                         const   = listing.OUTPUTMODE_PORTRAIT)
+
+    group0.add_argument ('--landscape',  '-l',
+                         help    = 'View page in landscape mode.',
+                         dest    = 'outmode',
+                         action  = 'store_const',
+                         const   = listing.OUTPUTMODE_LANDSCAPE)
+
+    group0.add_argument ('--2up',        '-2',
+                         help    = 'Print two pages per page in landscape mode.',
+                         dest    = 'outmode',
+                         action  = 'store_const',
+                         const   = listing.OUTPUTMODE_2UP)
+
+    parser.set_defaults (outmode = listing.OUTPUTMODE_PORTRAIT)
+
+    parser.add_argument ('--tabs',       '-t',
+                         help    = 'Provide tab stop settings for input file',
+                         dest    = 'tabs',
+                         type    = int,
+                         default = 8)
+
+    parser.add_argument ('--number',     '-n',
+                         help    = 'Number output lines.',
+                         dest    = 'number',
+                         action  = 'count',
+                         default = 0)
+
+    group0 = parser.add_mutually_exclusive_group (required=False)
+
+    group0.add_argument ('--borders',    '-B',
+                         help    = 'Draw borders around page.',
+                         dest    = 'borders',
+                         action  = 'store_true')
+
+    group0.add_argument ('--noborders',  '-b',
+                         help    = 'Do not draw borders around page.',
+                         dest    = 'borders',
+                         action  = 'store_false')
+
+    parser.set_defaults (borders = True)
+
+    group0 = parser.add_mutually_exclusive_group (required=False)
+
+    group0.add_argument ('--headings',   '-H',
+                         help    = 'Print page headings.',
+                         dest    = 'headings',
+                         action  = 'store_true')
+
+    group0.add_argument ('--noheadings', '-N',
+                         help    = 'Do not include page headings.',
+                         dest    = 'headings',
+                         action  = 'store_false')
+
+    parser.set_defaults (headings= True)
+
+    parser.add_argument ('--font',     '-f',
+                         help    = 'Name of font used to display file.',
+                         dest    = 'font',
+                         metavar = 'FONTNAME',
+                         default = 'FreeMono')
+
+    parser.add_argument ('--fs',       '-F',
+                         help    = 'Size in points for font.',
+                         dest    = 'fs',
+                         type    = int,
+                         metavar = 'FONTSIZE',
+                         default = 0)
+
+    parser.add_argument ('--lineskip',
+                         help    = 'Additional line skip in points.',
+                         dest    = 'lineskip',
+                         type    = int,
+                         default = 0)
+
+    group0 = parser.add_mutually_exclusive_group (required=False)
+
+    group0.add_argument ('--verbose',  '-v',
+                         help    = 'Display additional information',
+                         dest    = 'verbose',
+                         default = 0,
+                         action  = 'count')
+
+    group0.add_argument ('--quiet',    '-q',
+                         help    = 'turn off verbose and do not print summary',
+                         dest    = 'quiet',
+                         type    = int,
+                         default = 0,
+                         action  = 'store_true')
+
+    parser.add_argument ('--test',     '-T',
+                         action  = 'store_const',
+                         dest    = 'test',
+                         const   = True,
+                         default = False,
+                         help    = 'Examine arguments and detect errors')
+
+    parser.add_argument ('filename',
+                         help    = 'File to be printed.')
+
+    return parser
 
 
-#   **************************************************
-#   *
-#   *    Verify -paper settings
-#   *
-#   **************************************************
+"""
+\fn 	main
 
-initialPageSetting ()
+\brief	The starting point for this operation.
 
-page = papersizes[options.paper]
+description:
 
+  This command reads a single input file and produces either
+  a PDF file or postscript file  displaying the contents of
+  the input file.  The input file is expected to be encoded
+  as UTF-8 (or ASCII) and the output file displays the
+  contents of that file.
 
-#   **************************************************
-#   *
-#   *  Initialize font name
-#   *
-#   *  Default font size to 5 point if -2up, otherwise 8 points
-#   *
-#   *  Switch to landscape mode if -2up or -landscape
-#   *
-#   **************************************************
+"""
+def main ():
 
-fontname = options.font
+    parser  = cmdLine ()
+    options = parser.parse_args ()
 
-if 0 != options.fs:
-    fontsize   = options.fs
-else:
-    if options.twoup and 0 == options.fs:
-        fontsize = 5
-    else:
-        fontsize = 8
+    if options.quiet:
+        options.verbose = 0
 
-
-if options.landscape or options.twoup:
-    page = ( page[1], page[0] )
-    if options.verbose:
-        print "%s:  generating landscape output" % MyName
-
-
-#   **************************************************
-#   *
-#   *   Setup file names:
-#   *
-#   *     - output file (PDF file)
-#   *
-#   *     - basename and fullname of input file
-#   *
-#   *     -  Open and read input file
-#   *
-#   **************************************************
-
-setOutputFile (parser, options)
-
-filename = os.path.expanduser (options.filename)
-basename = os.path.basename   (options.filename)
-fullname = os.path.abspath    (options.filename)
-
-
-if options.verbose > 0:
-    print "File Name"
-    print "=============================="
-    print "Output file = '%s'" % options.o
-    print "Base Name   = '%s'" % basename
-    print "Full Name   = '%s'" % fullname
-
-
-if 0 == os.path.exists (filename):
-    fatalerror (parser, "File '%s' does not exist" % options.filename)
-
-try:
-    fd = codecs.open (filename, encoding='utf-8')
-except IOError as ei:
-    fatalerror (parser, "Open failed: %s" % ei)
-except OSError as ei:
-    fatalerror (parser, "Open failed: %s" % ei)
-
-try:
-    file = fd.read ().splitlines ()
-except OSError as ei:
-    fatalerror (parser, "Read failed: %s" % ei)
-except IOError as ei:
-    fatalerror (parser, "Read failed: %s" % ei)
-
-
-if options.test:
-    if 0 == options.verbose:
+    if options.verbose > 0:
         printoptions (options)
+
+    myoutmode, fsize = initialPageSetting (parser, options)
+
+    job = listing ()
+
+    job.set_verbose   (options.verbose)
+    job.set_borders   (options.borders)
+    job.set_headings  (options.headings)
+    job.set_numbering (options.number)
+    job.set_page_size (options.paper)
+    job.set_font_name (options.font)
+    job.set_font_size (fsize)
+    job.set_output_mode (myoutmode)
+
+
+    #       Setup file names:
+
+    job.set_output_type (setOutputFile (parser, options))
+    job.set_filename    (options.filename)
+
+    filename = os.path.expanduser (options.filename)
+
+    if options.verbose > 0:
         print "File Name"
         print "=============================="
         print "Output file = '%s'" % options.o
-        print "Base Name   = '%s'" % basename
-        print "Full Name   = '%s'" % fullname
-    exit (0)
-
-#   **************************************************
-#   *
-#   *     Initialize cairo output PDF / PS
-#   *
-#   **************************************************
+        print "input Name  = '%s'" % job.openname
+        print "Base Name   = '%s'" % job.basename
+        print "Full Name   = '%s'" % job.fullname
 
 
-if options.otype == 'pdf':
-    surface = cairo.PDFSurface (options.o, page[0], page[1])
-else:
-    # Postscript surface - use actual page dimensions
-    if options.landscape or options.twoup:
-        surface = cairo.PSSurface (options.o, page[1], page[0])
-    else:
-        surface = cairo.PSSurface (options.o, page[0], page[1])
+    if 0 == os.path.exists (filename):
+        fatalerror (parser, "File '%s' does not exist" % options.filename)
 
-    if options.landscape or options.twoup:
-       surface.dsc_begin_page_setup ()
-       surface.dsc_comment ("%%PageOrientation: Landscape")
+    try:
+        fd = codecs.open (filename, encoding='utf-8')
+    except IOError as ei:
+        fatalerror (parser, "Open failed: %s" % ei)
+    except OSError as ei:
+        fatalerror (parser, "Open failed: %s" % ei)
 
-context     = cairo.Context (surface)
-
-if options.otype == 'ps':
-    if options.landscape or options.twoup:
-        #  need to rotate page around the center of page
-        context.translate (page[1]/2, page[0]/2)
-        context.rotate    (-3.141592653589793/2)
-        context.translate (-page[0]/2, -page[1]/2)
-
-font        = pango.FontDescription(fontname + ' %d' % fontsize)
-
-if options.verbose > 2:
-    print "Font Family = '%s'" % font.get_family ()
-
-if options.verbose > 0:
-    printFont (font)
+    try:
+        file = fd.read ().splitlines ()
+    except OSError as ei:
+        fatalerror (parser, "Read failed: %s" % ei)
+    except IOError as ei:
+        fatalerror (parser, "Read failed: %s" % ei)
 
 
-#   **************************************************
-#   *
-#   *              set white page background
-#   *
-#   **************************************************
+    if options.test:
+        if 0 == options.verbose:
+            printoptions (options)
+            print "File Name"
+            print "=============================="
+            print "Output file = '%s'" % options.o
+            print "Base Name   = '%s'" % job.basename
+            print "Full Name   = '%s'" % job.fullname
+        exit (0)
 
-context.rectangle (0, 0, page[0], page[1])
-context.set_source_rgb (1, 1, 1)             # White
-context.fill ()
+    #        Initialize cairo output PDF / PS and determine layout
+    job.layoutPage (options.o)
 
+    if options.verbose > 0:
+        printFont (job.font)
+        job.displayLayout (file)
 
-#   ***************************************************
-#   *
-#   *  Create and initialize pango cairo context
-#   *
-#   ***************************************************
+    #        Print each line of file
 
-pccontext = pangocairo.CairoContext(context)
-pccontext.set_antialias(cairo.ANTIALIAS_SUBPIXEL)
+    lines, wrapped, spages, pages = job.printListing (file)
 
-#   **************************************************
-#   *
-#   *  Create layout
-#   *
-#   *  Initialize font and font information
-#   *
-#   *  Initialize character and line spacing information
-#   *
-#   **************************************************
+    #        Print summary
 
-if options.twoup:
-    #
-    #  +-----------------------+ +---------------------------------------+
-    #  |  (lmargin, umargin)   | |(lmargin + maxcolpos + 14, umargin)    |
-    #  |          |            | |                         |             |
-    #  |          |            | |                         |             |
-    #  |          |            | |                         |             |
-    #  |          |            | |                         |             |
-    #  |          |            | |                         |             |
-    #  |         \ /           | |                        \ /            |
-    #  |  (lmargin, maxlinepos)| |(lmargin + maxcolpos + 14, maxlinepos) |
-    #  +-----------------------+ +---------------------------------------+
-    #
-    maxcolpos = (page[0] - (lmargin * 2) - pg2upsep) / 2
-else:
-    maxcolpos =  page[0] - (lmargin * 2)
+    if 0 == options.quiet:
+        wstr  = ""  if  0 == wrapped  else  " (%d wrapped) "  % wrapped
+        upstr = ""  if  0 == spages   else  " on %d subpages" % spages
 
-# ***********************************************************************
-# *
-# *   create pango-cairo context and initialize font
-# *
-# ***********************************************************************
+        print "%d lines output%s%s on %d pages" % (lines, wstr, upstr, pages)
 
-layout      = pccontext.create_layout()
-layout.set_font_description(font)
-
-# ***********************************************************************
-# *
-# *   finalize page layout
-# *
-# ***********************************************************************
-
-lineskip    = 0
-maxcpl      = getMaxCPL (layout)
-lineskip   += options.lineskip
-
-maxlinepos  = umargin + int ((page[1] - (2 * umargin)) / lineskip) * lineskip
-maxlinepos  = int (maxlinepos)
-maxlpp      = int ((maxlinepos - umargin)/ lineskip)
-
-if maxlpp < 8:
-    fatalerror (options, "Font size too large")
-
-
-# **************************************************
-# *
-# *  Create heading line if generating headings
-# *
-# **************************************************
-
-if options.headings:
-    heading = createHeading (maxcpl, datentime, basename)
-
-
-# *******************************************************
-# *
-# *  Compute total number of pages/subpages in file
-# *
-# *******************************************************
-
-totalpages, totalsubpages = computeTotals (lineskip, maxcpl, maxlinepos, file)
-
-if options.verbose > 0:
-    displayLayout ()
-
-
-# *********************************************************
-# *
-# *  Translate coordinates to lmargin in and umargin down
-# *
-# *********************************************************
-
-context.translate (lmargin, umargin)
-
-
-# **************************************************
-# *
-# *           Print each line of file
-# *
-# **************************************************
-
-for line in file:
-    lineno  += 1
-    line     = expandTabs (line, options.tabs).rstrip ()
-    if options.number:
-        ltext = ('%4d: ' % lineno) + line
-    else:
-        ltext = line
-
-    llen   = len (ltext)
-
-    if llen > maxcpl:
-        wrapped += 1
-
-        if options.verbose > 0:
-            print "**** Wrapped line=%d, len=%d, maxcpl=%d"%(lineno,llen,maxcpl)
-	    if options.verbose > 1:
-	        print text[0:maxcpl]
-
-        while len (ltext) > maxcpl:
-       	    cnt  = maxcpl - 1
-	    this = ltext[0:cnt]
-	    that = ltext[cnt:]
-	    newOutputLine (layout, context, pccontext, this + "\\")
-
-	    if options.number:
-	        ltext = "      " + that
-	    else:
-	        ltext = that
-
-    newOutputLine (layout, context, pccontext, ltext)
-
-finishOutputPage (layout, context, pccontext)
-
-
-# *******************************************************
-# *
-# *               Print summary
-# *
-# *******************************************************
-
-wstr  = ""  if  0 == wrapped    else  (" (%d wrapped) "   %  wrapped)
-upstr = ""  if  0 == subpageno  else  (" on %d subpages"  %  (subpageno + 1))
-
-print "%d lines output%s%s on %d pages" % (lineno, wstr, upstr, pageno-1)
+main ()

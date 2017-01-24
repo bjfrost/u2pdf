@@ -11,7 +11,6 @@
 .\"
 .\" Formatted or processed versions of this manual, if unaccompanied by
 .\" the source, must acknowledge the copyright and authors of this work.
-.\" License.
 .\"
 .\" Format on Linux with the command:
 .\"
@@ -30,7 +29,7 @@ u2pdf \- produce file listing as PDF file
 The
 .BR u2pdf
 command reads the input
-.I FILE
+.B "FILE"
 and produces a PDF file that can be viewed and printed.
 This is especially useful for files containing Unicode
 glyphs as there are tools to produce listings of ASCII
@@ -43,15 +42,15 @@ command with many fewer but useful options.
 The available options are:
 
 .TP
-.B  "-pdf"
+.B  "-S, --pdf"
 produces a PDF file (the default).
 
 .TP
-.B  "-ps"
+.B  "-s, --ps"
 produces a postscript file.
 
 .TP
-.BI "-o OUTFILE"
+.BI "-o, -output OUTFILE"
 provides the file name for the generated PDF or PS file.
 If this option is not provided, then the resulting
 PDF or PS file is named after the input file with the
@@ -59,55 +58,56 @@ file suffix removed and either the
 \fC".pdf"\fP or \fC".ps"\fP suffix appended.
 
 .TP
-.B "-overwrite"
+.B "-w, --overwrite"
 indicates that it is not an error if the output file
 already exists.
 Without this option, if the output file exists, an error is
 reported.
 
 .TP
-.BI "-paper NAME"
+.BI "-P, --paper NAME"
 indicates the name of the paper size.
 Supported paper sizes include \fC"letter"\fP,
 \fC"legal"\fP and \fC"a4"\fP.
 The default paper name is \fC"letter"\fP.
 
 .TP
-.B  "-portrait"
+.B  "-p, --portrait"
 requests that the resulting document is oriented with the
-narrow size across.
+narrow size across.  This is the default.
 
 .TP
-.B  "-landscape"
+.B  "-l, --landscape"
 requests that the resulting document is oriented with the
 narrow size down.
 
 .TP
-.B  "-2up"
+.B  "-2, --2up"
 requests that the resulting document is oriented with the
 narrow size down with 2 pages appearing on each physical page.
 
 .TP
-.B "-number"
+.B "-n, --number"
 requests that the resulting document have each line of the
 input file numbered.
 
 .TP
-.BI "-tabs SPACING"
+.BI "-t, --tabs SPACING"
 indicates the tab stop spacing.
 The default value of 8 means that tabs are set at 8, 16, 24, 32, ...
 
 .TP
-.B "-borders"
-requests that the listing have borders around the listing (the default).
+.B "-B, --borders"
+requests that the listing have borders around the pages in the
+listing (the default).
 
 .TP
-.B "-noborders"
+.B "-b, --noborders"
 requests that the listing not include any borders.
 
 
 .TP
-.B "-headings"
+.B "-H, --headings"
 requests that each page of the listing begin with a line indicating
 the date and time the PDF file was produced,
 the name of the input file,
@@ -115,36 +115,39 @@ the page number.
 The heading is shaded to distinguish it from the file contents.
 
 .TP
-.B "-noheadings"
+.B "-N, --noheadings"
 requests that the listing have no headings.
 
-
 .TP
-.BI "-font NAME"
+.BI "-f, --font NAME"
 requests the font to be used to produce the listing.
 The font should be monospaced and contain all of the
 glyphs that will be printed.
-The default is APLUA (ideal for APL program listings).
+The default is FreeMono (works for APL program listings).
 
 .TP
-.BI "-fs SIZE"
+.BI "--fs SIZE"
 requests the font to be displayed in the indicated size
 in points.  The default is 10.
 
 .TP
-.B  "-lineskip SKIP"
+.B  "--lineskip SKIP"
 requests each output line be separated by an additional
 amount of white space.
 
 .TP
-.B "-test"
+.B "-T, --test"
 requests that the output file not be generated.
 This is used to test the other command line options
 for errors.
 
 .TP
-.B  "-verbose"
+.B  "-v, --verbose"
 requests debugging information to be displayed.
+
+.TP
+.B  "-q, --quiet"
+turns off verbose mode and does not print a summary.
 
 .SH NOTES
 
@@ -152,16 +155,19 @@ None (yet).
 
 .SH SEE ALSO
 
-.B a2ps(1), acroread(1).
+.B a2ps(1).
 
 .SH AUTHOR
 Written by Bruce J. Frost
 .SH "REPORTING BUGS"
-Report bugs to bugs at bjfrost.net.
+Report bugs to bugs at http://www.github.com/bjfrost/u2ps
 .SH COPYRIGHT
 Copyright \(co 2017 Bruce J. Frost.
-License LGPLv2 or later.
+License LGPLv3 or later.
 .br
-This is free software: you are free to change and redistribute it.
-There is NO WARRANTY, to the extent permitted by law.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
  

@@ -1,0 +1,11 @@
+u2pdf is a command line utility roughly based upon a2ps that
+generates a PDF file reflecting the contents of the input file.
+Command line options can be used to remove headings or page
+borders or to number the input file lines, or change the
+page style (portrait, landscape or 2-up).
+
+This tool is particularly useful when the input file contains
+UTF-8 characters such as an APL source file.
+
+This tool is written in python using the cairo, pango and
+pangocairo modules to produce the output file.
