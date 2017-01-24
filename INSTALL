@@ -1,0 +1,8 @@
+To install on a Unix-like system:
+
+1. Insure that python is installed and that the cairo, pango and
+   pangocairo modules are available.
+
+2. Copy u2pdf to an appropriate bin directory.
+
+3. Copy u2pdf.1 to an appropriate man directory.
