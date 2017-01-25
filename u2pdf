@@ -64,6 +64,7 @@ description:
      -T | --test           |  test command line for errors
      -v | --verbose        |  print debugging information
      -q | --quiet          |  turn off verbose and do not print a summary
+     -V | --version        |  print program name and version
      -h | --help           |  display help information
 
 """
@@ -79,6 +80,13 @@ description:
 """
 MyName   =  os.path.basename (__file__)
 
+
+"""
+\var	MyVersion
+
+\brief	Version number of this program.
+"""
+MyVersion = "1.0"
 
 
 #   **************************************************
@@ -1868,10 +1876,16 @@ def cmdLine ():
                          action  = 'store_true')
 
     parser.add_argument ('--test',     '-T',
+                         help    = 'Examine arguments and detect errors',
                          action  = 'store_true',
                          dest    = 'test',
-                         default = False,
-                         help    = 'Examine arguments and detect errors')
+                         default = False)
+
+    parser.add_argument ('--version',   '-V',
+                         help    = 'Display u2pdf version and exit',
+                         action  = 'store_true',
+                         dest    = 'version',
+                         default = False)
 
     parser.add_argument ('filename',
                          help    = 'File to be printed.')
@@ -1900,6 +1914,10 @@ def main ():
 
     if options.quiet:
         options.verbose = 0
+
+    if options.version:
+        print "%s: version %s" % (MyName, MyVersion)
+        exit (0)
 
     if options.verbose > 0:
         printoptions (options)
