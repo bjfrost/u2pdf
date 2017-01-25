@@ -1888,6 +1888,7 @@ def cmdLine ():
                          default = False)
 
     parser.add_argument ('filename',
+                         nargs   = '?',
                          help    = 'File to be printed.')
 
     return parser
@@ -1918,6 +1919,9 @@ def main ():
     if options.version:
         print "%s: version %s" % (MyName, MyVersion)
         exit (0)
+
+    if options.filename == None:
+        parser.print_usage ()
 
     if options.verbose > 0:
         printoptions (options)
