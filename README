@@ -9,3 +9,43 @@ UTF-8 characters such as an APL source file.
 
 This tool is written in python using the cairo, pango and
 pangocairo modules to produce the output file.
+
+usage: u2pdf [-h] [-o OUTFILE] [--overwrite] [--pdf | --ps]
+             [--paper PAPERSIZE] [--portrait | --landscape | --2up]
+             [--tabs TABS] [--number] [--borders | --noborders]
+             [--headings | --noheadings] [--font FONTNAME] [--fs FONTSIZE]
+             [--lineskip LINESKIP] [--verbose | --quiet] [--test] [--version]
+             filename
+
+Prints unicode FILENAME to PDF file.
+
+positional arguments:
+  filename              File to be printed.
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTFILE, --output OUTFILE
+                        Set output PDF file path
+  --overwrite, -w       Allow PDF file to be overwritten.
+  --pdf, -S             Produce PDF file
+  --ps, -s              Produce postscript file
+  --paper PAPERSIZE, -P PAPERSIZE
+                        Change the default paper size.
+  --portrait, -p        View page in portrait mode.
+  --landscape, -l       View page in landscape mode.
+  --2up, -2             Print two pages per page in landscape mode.
+  --tabs TABS, -t TABS  Provide tab stop settings for input file
+  --number, -n          Number output lines.
+  --borders, -B         Draw borders around page.
+  --noborders, -b       Do not draw borders around page.
+  --headings, -H        Print page headings.
+  --noheadings, -N      Do not include page headings.
+  --font FONTNAME, -f FONTNAME
+                        Name of font used to display file.
+  --fs FONTSIZE, -F FONTSIZE
+                        Size in points for font.
+  --lineskip LINESKIP   Additional line skip in points.
+  --verbose, -v         Display additional information
+  --quiet, -q           turn off verbose and do not print summary
+  --test, -T            Examine arguments and detect errors
+  --version, -V         Display u2pdf version and exit
